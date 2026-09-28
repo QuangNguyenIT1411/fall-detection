@@ -152,6 +152,30 @@ void main() {
     provider.dispose();
   });
 
+  testWidgets('MQTT dashboard ẩn hoàn toàn nút mô phỏng trên desktop/mobile', (
+    tester,
+  ) async {
+    final provider = TelemetryProvider(_FakeMqttSource())..start();
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    for (final width in <double>[1200, 390]) {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(
+        ChangeNotifierProvider<TelemetryProvider>.value(
+          value: provider,
+          child: MaterialApp(home: DashboardScreen(onOpenEvent: (_) {})),
+        ),
+      );
+      expect(find.text('Tổng quan hệ thống'), findsOneWidget);
+      expect(find.byKey(const Key('simulate-fall-button')), findsNothing);
+      expect(find.text('Mô phỏng chỉ dùng MOCK'), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+    provider.dispose();
+  });
+
   test('MQTT topics và WebSocket URL được build từ config', () {
     expect(config.isConfigured, isTrue);
     expect(config.websocketUrl, 'wss://example.s1.eu.hivemq.cloud:8884/mqtt');

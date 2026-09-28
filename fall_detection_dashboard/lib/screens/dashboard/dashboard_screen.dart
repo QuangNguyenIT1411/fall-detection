@@ -41,7 +41,9 @@ class DashboardScreen extends StatelessWidget {
                 _Header(
                   isSimulating: provider.isSimulating,
                   isDetected: telemetry.state == FallState.fallDetected,
-                  canSimulate: provider.canSimulate,
+                  showSimulation:
+                      provider.source == TelemetrySource.mock &&
+                      provider.canSimulate,
                   onSimulate: provider.simulateFall,
                   onReset: provider.resetSimulation,
                 ),
@@ -119,14 +121,14 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.isSimulating,
     required this.isDetected,
-    required this.canSimulate,
+    required this.showSimulation,
     required this.onSimulate,
     required this.onReset,
   });
 
   final bool isSimulating;
   final bool isDetected;
-  final bool canSimulate;
+  final bool showSimulation;
   final VoidCallback onSimulate;
   final VoidCallback onReset;
 
@@ -156,27 +158,26 @@ class _Header extends StatelessWidget {
             ),
           ],
         ),
-        FilledButton.icon(
-          key: const Key('simulate-fall-button'),
-          onPressed: !canSimulate || isSimulating
-              ? null
-              : (isDetected ? onReset : onSimulate),
-          style: FilledButton.styleFrom(
-            backgroundColor: isDetected ? AppColors.navy : AppColors.red,
+        if (showSimulation)
+          FilledButton.icon(
+            key: const Key('simulate-fall-button'),
+            onPressed: isSimulating
+                ? null
+                : (isDetected ? onReset : onSimulate),
+            style: FilledButton.styleFrom(
+              backgroundColor: isDetected ? AppColors.navy : AppColors.red,
+            ),
+            icon: Icon(
+              isDetected ? Icons.restart_alt : Icons.warning_amber_rounded,
+            ),
+            label: Text(
+              isDetected
+                  ? 'Đặt lại mô phỏng'
+                  : isSimulating
+                  ? 'Đang mô phỏng...'
+                  : 'Mô phỏng té ngã',
+            ),
           ),
-          icon: Icon(
-            isDetected ? Icons.restart_alt : Icons.warning_amber_rounded,
-          ),
-          label: Text(
-            !canSimulate
-                ? 'Mô phỏng chỉ dùng MOCK'
-                : isDetected
-                ? 'Đặt lại mô phỏng'
-                : isSimulating
-                ? 'Đang mô phỏng...'
-                : 'Mô phỏng té ngã',
-          ),
-        ),
       ],
     );
   }

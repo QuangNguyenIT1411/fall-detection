@@ -16,7 +16,8 @@ Widget buildTestApp({String? initialRoute, FallEventRepository? repository}) {
         create: (_) => TelemetryProvider(MockTelemetryService())..start(),
       ),
       ChangeNotifierProvider(
-        create: (_) => FallEventProvider(repository ?? _EmptyRepository())..loadEvents(),
+        create: (_) =>
+            FallEventProvider(repository ?? _EmptyRepository())..loadEvents(),
       ),
     ],
     child: FallDetectionApp(initialRoute: initialRoute),
@@ -53,10 +54,9 @@ void main() {
 
   testWidgets('direct /events/:id loads official event', (tester) async {
     const id = '10000000-0000-4000-8000-000000000103';
-    await tester.pumpWidget(buildTestApp(
-      initialRoute: '/events/$id',
-      repository: _EventRepository(),
-    ));
+    await tester.pumpWidget(
+      buildTestApp(initialRoute: '/events/$id', repository: _EventRepository()),
+    );
     await tester.pumpAndSettle();
     expect(find.text(id), findsOneWidget);
     expect(find.text('Đã gửi cảnh báo người thân lúc'), findsOneWidget);
@@ -69,6 +69,7 @@ void main() {
 
     expect(find.text('Tổng quan hệ thống'), findsOneWidget);
     expect(find.text('Mô phỏng té ngã'), findsOneWidget);
+    expect(find.byKey(const Key('simulate-fall-button')), findsOneWidget);
     expect(find.textContaining('ONLINE'), findsOneWidget);
     expect(find.text('Gia tốc tổng'), findsOneWidget);
 
