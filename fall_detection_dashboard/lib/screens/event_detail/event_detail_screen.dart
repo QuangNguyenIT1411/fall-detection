@@ -10,10 +10,12 @@ class EventDetailScreen extends StatelessWidget {
     super.key,
     required this.event,
     required this.onBack,
+    this.onRefresh,
   });
 
   final FallEvent? event;
   final VoidCallback onBack;
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -37,13 +39,26 @@ class EventDetailScreen extends StatelessWidget {
                         label: const Text('Quay lại lịch sử'),
                       ),
                       const SizedBox(height: 12),
-                      const Text(
-                        'Chi tiết sự kiện',
-                        style: TextStyle(
-                          color: AppColors.navy,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Chi tiết sự kiện',
+                              style: TextStyle(
+                                color: AppColors.navy,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          if (onRefresh != null)
+                            IconButton.filledTonal(
+                              key: const Key('refresh-event-button'),
+                              tooltip: 'Làm mới sự kiện',
+                              onPressed: onRefresh,
+                              icon: const Icon(Icons.refresh_rounded),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 22),
                       Container(
@@ -201,7 +216,39 @@ class EventDetailScreen extends StatelessWidget {
                                       width: itemWidth,
                                       label: 'Đã gửi cảnh báo người thân lúc',
                                       value: DateFormat('dd/MM/yyyy HH:mm:ss')
-                                          .format(currentEvent.notificationSentAt!.toLocal()),
+                                          .format(
+                                            currentEvent.notificationSentAt!
+                                                .toLocal(),
+                                          ),
+                                    ),
+                                  if (currentEvent.status ==
+                                      FallEventStatus.confirmed)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Người thân xác nhận',
+                                      value: currentEvent.acknowledgedAt == null
+                                          ? 'Người thân chưa xác nhận đã nhận cảnh báo'
+                                          : '✅ Người thân đã nhận cảnh báo',
+                                    ),
+                                  if (currentEvent.acknowledgedAt != null)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Đã nhận lúc',
+                                      value: DateFormat('dd/MM/yyyy HH:mm:ss')
+                                          .format(
+                                            currentEvent.acknowledgedAt!
+                                                .toLocal(),
+                                          ),
+                                    ),
+                                  if (currentEvent.acknowledgedVia != null)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Qua',
+                                      value:
+                                          currentEvent.acknowledgedVia ==
+                                              'TELEGRAM'
+                                          ? 'Telegram'
+                                          : currentEvent.acknowledgedVia!,
                                     ),
                                   _DetailItem(
                                     width: itemWidth,

@@ -35,6 +35,17 @@ void main() {
       ]);
       expect(provider.events, hasLength(3));
       expect(provider.events.first.status, FallEventStatus.confirmed);
+      final acknowledged = _event(
+        'newest',
+        newest.detectedAt,
+        status: FallEventStatus.confirmed,
+        acknowledgedAt: baseline.add(const Duration(minutes: 3)),
+      );
+      provider.upsertOfficialEvent(acknowledged);
+      provider.upsertOfficialEvent(
+        _event('newest', newest.detectedAt, status: FallEventStatus.confirmed),
+      );
+      expect(provider.events.first.acknowledgedAt, acknowledged.acknowledgedAt);
       provider.upsertOfficialEvent(newest);
       expect(provider.events.first.status, FallEventStatus.confirmed);
       provider.dispose();
@@ -71,7 +82,12 @@ void main() {
       final provider = FallEventProvider(
         _HistoryRepository([
           _event('old', baseline),
-          _event('new', baseline.add(const Duration(minutes: 1))),
+          _event(
+            'new',
+            baseline.add(const Duration(minutes: 1)),
+            status: FallEventStatus.confirmed,
+            acknowledgedAt: baseline.add(const Duration(minutes: 2)),
+          ),
         ]),
       );
       await provider.loadEvents();
@@ -86,6 +102,7 @@ void main() {
 
       expect(find.byKey(const Key('latest-history-badge')), findsOneWidget);
       expect(find.text('MỚI NHẤT'), findsOneWidget);
+      expect(find.text('ĐÃ NHẬN'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       provider.dispose();
     });
@@ -96,6 +113,7 @@ FallEvent _event(
   String id,
   DateTime detectedAt, {
   FallEventStatus status = FallEventStatus.detected,
+  DateTime? acknowledgedAt,
 }) => FallEvent(
   id: id,
   deviceId: 'device-uuid',
@@ -108,6 +126,8 @@ FallEvent _event(
   status: status,
   cancelledAt: null,
   confirmedAt: status == FallEventStatus.confirmed ? detectedAt : null,
+  acknowledgedAt: acknowledgedAt,
+  acknowledgedVia: acknowledgedAt == null ? null : 'TELEGRAM',
   createdAt: detectedAt,
 );
 

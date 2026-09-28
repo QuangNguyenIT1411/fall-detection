@@ -63,6 +63,28 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('event detail refresh observes Telegram ACK without polling', (
+    tester,
+  ) async {
+    const id = '10000000-0000-4000-8000-000000000103';
+    final repository = _EventRepository();
+    await tester.pumpWidget(
+      buildTestApp(initialRoute: '/events/$id', repository: repository),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Người thân chưa xác nhận đã nhận cảnh báo'),
+      findsOneWidget,
+    );
+
+    repository.acknowledged = true;
+    await tester.tap(find.byKey(const Key('refresh-event-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('✅ Người thân đã nhận cảnh báo'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Đã nhận cảnh báo'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('hiển thị dashboard và dữ liệu mock', (tester) async {
     await tester.pumpWidget(buildTestApp());
     await tester.pump();
@@ -72,6 +94,7 @@ void main() {
     expect(find.byKey(const Key('simulate-fall-button')), findsOneWidget);
     expect(find.textContaining('ONLINE'), findsOneWidget);
     expect(find.text('Gia tốc tổng'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Đã nhận cảnh báo'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -122,6 +145,8 @@ void main() {
 }
 
 class _EventRepository extends _EmptyRepository {
+  bool acknowledged = false;
+
   @override
   Future<FallEvent?> getFallEventById(String id) async => FallEvent.fromJson({
     'id': id,
@@ -130,6 +155,8 @@ class _EventRepository extends _EmptyRepository {
     'status': 'CONFIRMED',
     'confirmed_at': '2026-09-28T01:19:16Z',
     'notification_sent_at': '2026-09-28T01:19:17Z',
+    'acknowledged_at': acknowledged ? '2026-09-28T01:20:00Z' : null,
+    'acknowledged_via': acknowledged ? 'TELEGRAM' : null,
     'created_at': '2026-09-28T01:18:00Z',
   });
 }

@@ -108,6 +108,54 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('detail displays caregiver ACK in local time, read only', (
+    tester,
+  ) async {
+    final event = FallEvent.fromJson({
+      ..._event(FallEventStatus.confirmed).toJson(),
+      'acknowledged_at': '2026-09-28T01:20:00Z',
+      'acknowledged_via': 'TELEGRAM',
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EventDetailScreen(event: event, onBack: () {}),
+        ),
+      ),
+    );
+    expect(find.text('✅ Người thân đã nhận cảnh báo'), findsOneWidget);
+    expect(
+      find.text(
+        DateFormat('dd/MM/yyyy HH:mm:ss')
+            .format(event.acknowledgedAt!.toLocal()),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Telegram'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Đã nhận cảnh báo'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Đã nhận cảnh báo'), findsNothing);
+  });
+
+  testWidgets(
+    'confirmed event without ACK says caregiver has not acknowledged',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: EventDetailScreen(
+              event: _event(FallEventStatus.confirmed),
+              onBack: () {},
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.text('Người thân chưa xác nhận đã nhận cảnh báo'),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 FallEvent _event(FallEventStatus status) => FallEvent.fromJson({

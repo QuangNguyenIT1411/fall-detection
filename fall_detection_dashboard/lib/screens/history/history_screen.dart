@@ -199,6 +199,15 @@ class _EventTile extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           EventStatusBadge(status: event.status),
+                          if (event.acknowledgedAt != null)
+                            const Text(
+                              'ĐÃ NHẬN',
+                              style: TextStyle(
+                                color: AppColors.blue,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           Text(
                             '${event.peakAcc?.toStringAsFixed(2) ?? '—'} g • '
                             '${event.peakGyro?.toStringAsFixed(1) ?? '—'} dps • '
@@ -227,6 +236,17 @@ class _EventTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 18),
                 EventStatusBadge(status: event.status),
+                if (event.acknowledgedAt != null) ...[
+                  const SizedBox(width: 10),
+                  const Text(
+                    'ĐÃ NHẬN',
+                    style: TextStyle(
+                      color: AppColors.blue,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ],
               const SizedBox(width: 8),
               const Icon(Icons.chevron_right, color: AppColors.muted),

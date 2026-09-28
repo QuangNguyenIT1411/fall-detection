@@ -1,5 +1,5 @@
 import { handleConfirmFallEvent } from "./index.ts";
-import { sendFallConfirmedNotification } from "../_shared/telegram.ts";
+import { sendDevicePresenceNotification, sendFallConfirmedNotification } from "../_shared/telegram.ts";
 import type { DeviceAuthResult } from "../_shared/device_auth.ts";
 
 const eventId = "10000000-0000-4000-8000-000000000103";
@@ -166,10 +166,13 @@ Deno.test("Telegram HTTP is mocked, message uses Vietnam timezone, no secret log
     lowGDurationMs: 1150, lowGToImpactMs: 1160,
   };
   let text = "";
+  let markup: unknown;
   const result = await sendFallConfirmedNotification(payload, {
     token: "secret-test-token", chatId: "12345",
     fetchImpl: async (_url, init) => {
-      text = JSON.parse(init?.body as string).text;
+      const sent = JSON.parse(init?.body as string);
+      text = sent.text;
+      markup = sent.reply_markup;
       return Response.json({ ok: true, result: { message_id: 123 } });
     },
   });
@@ -177,6 +180,7 @@ Deno.test("Telegram HTTP is mocked, message uses Vietnam timezone, no secret log
   assert(text.includes("28/09/2026 08:19:16"), "Wrong Vietnam time");
   assert(text.includes("Peak ACC: 10.82 g"), "Missing metric");
   assert(text.includes(eventId), "Missing event UUID");
+  assert(JSON.stringify(markup).includes(`ack:${eventId}`), "ACK button missing");
   const rejected = await sendFallConfirmedNotification(payload, {
     token: "secret-test-token", chatId: "12345",
     fetchImpl: async () => Response.json({ ok: false, description: "denied" }),
@@ -196,5 +200,22 @@ Deno.test("Telegram HTTP is mocked, message uses Vietnam timezone, no secret log
     assert(!logs.join(" ").includes("secret-test-token"), "Secret logged");
   } finally {
     console.error = original;
+  }
+});
+
+Deno.test("device offline/recovery Telegram never has fall ACK button", async () => {
+  for (const kind of ["offline", "recovery"] as const) {
+    let sentBody: Record<string, unknown> = {};
+    const result = await sendDevicePresenceNotification(kind, {
+      deviceName: "Thiết bị 01", deviceCode: "device01",
+      lastSeenAt: confirmedAt,
+    }, {
+      token: "fake-token", chatId: "12345",
+      fetchImpl: async (_url, init) => {
+        sentBody = JSON.parse(init?.body as string);
+        return Response.json({ ok: true, result: { message_id: 123 } });
+      },
+    });
+    assert(result.ok && sentBody.reply_markup === undefined, `${kind} has ACK button`);
   }
 });

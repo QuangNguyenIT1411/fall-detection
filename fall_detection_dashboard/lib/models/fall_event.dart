@@ -32,6 +32,8 @@ class FallEvent {
     required this.createdAt,
     this.confirmedAt,
     this.notificationSentAt,
+    this.acknowledgedAt,
+    this.acknowledgedVia,
     this.device,
     this.isLocalRealtime = false,
   });
@@ -48,6 +50,8 @@ class FallEvent {
   final DateTime? cancelledAt;
   final DateTime? confirmedAt;
   final DateTime? notificationSentAt;
+  final DateTime? acknowledgedAt;
+  final String? acknowledgedVia;
   final DateTime createdAt;
   final Device? device;
   final bool isLocalRealtime;
@@ -67,6 +71,8 @@ class FallEvent {
       cancelledAt: _parseNullableDate(json['cancelled_at']),
       confirmedAt: _parseNullableDate(json['confirmed_at']),
       notificationSentAt: _parseNullableDate(json['notification_sent_at']),
+      acknowledgedAt: _parseNullableDate(json['acknowledged_at']),
+      acknowledgedVia: json['acknowledged_via'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       device: deviceJson is Map<String, dynamic>
           ? Device.fromJson(deviceJson)
@@ -90,6 +96,8 @@ class FallEvent {
     'cancelled_at': cancelledAt?.toUtc().toIso8601String(),
     'confirmed_at': confirmedAt?.toUtc().toIso8601String(),
     'notification_sent_at': notificationSentAt?.toUtc().toIso8601String(),
+    'acknowledged_at': acknowledgedAt?.toUtc().toIso8601String(),
+    'acknowledged_via': acknowledgedVia,
     'created_at': createdAt.toUtc().toIso8601String(),
   };
 

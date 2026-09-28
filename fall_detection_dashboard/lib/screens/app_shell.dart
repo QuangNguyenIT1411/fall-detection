@@ -36,19 +36,22 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _selectedIndex = widget.route.pageIndex;
     _selectedEvent = widget.initialEvent;
-    if (widget.route.eventId != null && _selectedEvent == null) {
+    if (widget.route.eventId != null &&
+        (_selectedEvent == null || !_selectedEvent!.isLocalRealtime)) {
       _loadDeepLinkedEvent(widget.route.eventId!);
     }
   }
 
   Future<void> _loadDeepLinkedEvent(String id) async {
-    _loadingEvent = true;
+    _loadingEvent = _selectedEvent == null;
     try {
       final event = await context.read<FallEventProvider>().loadEventById(id);
       if (!mounted) return;
       setState(() {
-        _selectedEvent = event;
-        _eventLoadError = event == null ? 'Không tìm thấy sự kiện.' : null;
+        _selectedEvent = event ?? _selectedEvent;
+        _eventLoadError = _selectedEvent == null
+            ? 'Không tìm thấy sự kiện.'
+            : null;
         _loadingEvent = false;
       });
     } catch (_) {
@@ -79,10 +82,8 @@ class _AppShellState extends State<AppShell> {
   ];
 
   void _openEvent(FallEvent event) {
-    Navigator.of(context).pushNamed(
-      AppRoute.pathForEvent(event.id),
-      arguments: event,
-    );
+    Navigator.of(context)
+        .pushNamed(AppRoute.pathForEvent(event.id), arguments: event);
   }
 
   void _selectPage(int index) {
@@ -108,7 +109,13 @@ class _AppShellState extends State<AppShell> {
       else if (selectedEvent == null && _eventLoadError != null)
         Center(child: Text(_eventLoadError!))
       else
-        EventDetailScreen(event: selectedEvent, onBack: () => _selectPage(2)),
+        EventDetailScreen(
+          event: selectedEvent,
+          onBack: () => _selectPage(2),
+          onRefresh: selectedEvent != null && !selectedEvent.isLocalRealtime
+              ? () => _loadDeepLinkedEvent(selectedEvent.id)
+              : null,
+        ),
     ];
 
     return LayoutBuilder(
@@ -187,6 +194,10 @@ class _AppShellState extends State<AppShell> {
     List<FallEvent> officialEvents,
   ) {
     if (selected == null) return null;
+
+    for (final event in officialEvents) {
+      if (event.id == selected.id && event.acknowledgedAt != null) return event;
+    }
 
     for (final event in realtimeEvents) {
       if (event.id == selected.id ||

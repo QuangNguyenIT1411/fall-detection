@@ -57,6 +57,23 @@ void main() {
       expect(event.device?.deviceCode, 'device01');
       expect(event.toJson()['status'], 'CANCELLED');
       expect(event.notificationSentAt, isNull);
+      expect(event.acknowledgedAt, isNull);
+      expect(event.acknowledgedVia, isNull);
+    });
+
+    test('parse caregiver acknowledgement from server fields', () {
+      final event = FallEvent.fromJson({
+        'id': '10000000-0000-4000-8000-000000000103',
+        'device_id': '00000000-0000-4000-8000-000000000001',
+        'detected_at': '2026-09-28T01:18:00Z',
+        'status': 'CONFIRMED',
+        'acknowledged_at': '2026-09-28T01:20:00Z',
+        'acknowledged_via': 'TELEGRAM',
+        'created_at': '2026-09-28T01:18:00Z',
+      });
+      expect(event.acknowledgedAt?.isUtc, isTrue);
+      expect(event.acknowledgedVia, 'TELEGRAM');
+      expect(event.toJson()['acknowledged_at'], '2026-09-28T01:20:00.000Z');
     });
 
     test('parse notification_sent_at khi Telegram đã gửi', () {
@@ -69,9 +86,14 @@ void main() {
         'notification_sent_at': '2026-09-28T01:19:17Z',
         'created_at': '2026-09-28T01:18:00Z',
       });
-      expect(event.notificationSentAt?.toUtc().toIso8601String(),
-          '2026-09-28T01:19:17.000Z');
-      expect(event.toJson()['notification_sent_at'], '2026-09-28T01:19:17.000Z');
+      expect(
+        event.notificationSentAt?.toUtc().toIso8601String(),
+        '2026-09-28T01:19:17.000Z',
+      );
+      expect(
+        event.toJson()['notification_sent_at'],
+        '2026-09-28T01:19:17.000Z',
+      );
     });
   });
 }

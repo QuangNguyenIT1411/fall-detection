@@ -99,12 +99,25 @@ export async function sendFallConfirmedNotification(
     fetchImpl?: typeof fetch;
   } = {},
 ): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
-  return sendTelegramText(formatFallConfirmedMessage(event), options);
+  return sendTelegramText(formatFallConfirmedMessage(event), {
+    ...options,
+    replyMarkup: {
+      inline_keyboard: [[{
+        text: "✅ Đã nhận cảnh báo",
+        callback_data: `ack:${event.id}`,
+      }]],
+    },
+  });
 }
 
 async function sendTelegramText(
   text: string,
-  options: { token?: string; chatId?: string; fetchImpl?: typeof fetch },
+  options: {
+    token?: string;
+    chatId?: string;
+    fetchImpl?: typeof fetch;
+    replyMarkup?: { inline_keyboard: { text: string; callback_data: string }[][] };
+  },
 ): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
   const token = options.token ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = options.chatId ?? Deno.env.get("TELEGRAM_CHAT_ID");
@@ -117,7 +130,11 @@ async function sendTelegramText(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text }),
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {}),
+        }),
         signal: AbortSignal.timeout(5000),
       },
     );

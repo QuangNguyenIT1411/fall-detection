@@ -85,6 +85,9 @@ class FallEventProvider extends ChangeNotifier {
 
   static FallEvent _preferTerminal(FallEvent? existing, FallEvent incoming) {
     if (existing == null) return incoming;
+    if (existing.acknowledgedAt != null && incoming.acknowledgedAt == null) {
+      return existing;
+    }
     if (existing.status != FallEventStatus.detected &&
         incoming.status == FallEventStatus.detected) {
       return existing;
