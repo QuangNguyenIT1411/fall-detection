@@ -17,7 +17,7 @@ export type TelegramFailure =
   | "rejected"
   | "invalid_response";
 
-function vietnamTime(iso: string): string {
+export function vietnamTime(iso: string): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Ho_Chi_Minh",
     day: "2-digit",
@@ -57,6 +57,40 @@ export function formatFallConfirmedMessage(event: ConfirmedFallNotification): st
   ].join("\n");
 }
 
+export interface DevicePresenceNotification {
+  deviceName: string;
+  deviceCode: string;
+  lastSeenAt: string;
+  offlineSince?: string;
+  recoveredAt?: string;
+}
+
+export function formatDevicePresenceMessage(
+  kind: "offline" | "recovery",
+  device: DevicePresenceNotification,
+): string {
+  const label = `Thiết bị: ${oneLine(device.deviceName)} (${oneLine(device.deviceCode)})`;
+  return kind === "offline"
+    ? [
+      "⚠️ THIẾT BỊ MẤT KẾT NỐI", "", label,
+      `Mất kết nối từ: ${vietnamTime(device.offlineSince ?? device.lastSeenAt)}`,
+      `Lần cuối hoạt động: ${vietnamTime(device.lastSeenAt)}`,
+      "", "Vui lòng kiểm tra thiết bị và nguồn điện.",
+    ].join("\n")
+    : [
+      "✅ THIẾT BỊ ĐÃ KẾT NỐI TRỞ LẠI", "", label,
+      `Kết nối lại lúc: ${vietnamTime(device.recoveredAt ?? device.lastSeenAt)}`,
+    ].join("\n");
+}
+
+export async function sendDevicePresenceNotification(
+  kind: "offline" | "recovery",
+  device: DevicePresenceNotification,
+  options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {},
+): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
+  return sendTelegramText(formatDevicePresenceMessage(kind, device), options);
+}
+
 export async function sendFallConfirmedNotification(
   event: ConfirmedFallNotification,
   options: {
@@ -64,6 +98,13 @@ export async function sendFallConfirmedNotification(
     chatId?: string;
     fetchImpl?: typeof fetch;
   } = {},
+): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
+  return sendTelegramText(formatFallConfirmedMessage(event), options);
+}
+
+async function sendTelegramText(
+  text: string,
+  options: { token?: string; chatId?: string; fetchImpl?: typeof fetch },
 ): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
   const token = options.token ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = options.chatId ?? Deno.env.get("TELEGRAM_CHAT_ID");
@@ -76,7 +117,7 @@ export async function sendFallConfirmedNotification(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: formatFallConfirmedMessage(event) }),
+        body: JSON.stringify({ chat_id: chatId, text }),
         signal: AbortSignal.timeout(5000),
       },
     );

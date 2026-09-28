@@ -6,3 +6,9 @@ verify_jwt = false
 
 [functions.confirm-fall-event]
 verify_jwt = false
+
+[functions.device-heartbeat]
+verify_jwt = false
+
+[functions.check-device-offline]
+verify_jwt = false

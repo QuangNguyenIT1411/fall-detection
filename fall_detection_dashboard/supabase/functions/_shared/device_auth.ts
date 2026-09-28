@@ -11,7 +11,7 @@ export function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-function serverSecret(): string | null {
+export function serverSecret(): string | null {
   const legacyServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (legacyServiceRole) return legacyServiceRole;
 

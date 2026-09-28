@@ -21,6 +21,7 @@
 #define CLOUD_EVENT_PAYLOAD_SIZE 384
 #define CLOUD_EVENT_RESPONSE_SIZE 512
 #define CLOUD_EVENT_ID_SIZE 37
+#define CLOUD_HEARTBEAT_INTERVAL_MS 20000
 
 typedef enum
 {
@@ -321,6 +322,26 @@ static bool submit_confirm(const char *event_id)
     return true;
 }
 
+static bool submit_heartbeat(void)
+{
+    http_response_buffer_t response;
+    int status_code = 0;
+    esp_err_t err = post_json("device-heartbeat", "{}", &response, &status_code);
+    if (err != ESP_OK || status_code != 200)
+    {
+        ESP_LOGW(TAG, "Heartbeat failed: transport=%s http=%d",
+                 esp_err_to_name(err), status_code);
+        return false;
+    }
+    cJSON *root = cJSON_Parse(response.data);
+    cJSON *success = root ? cJSON_GetObjectItemCaseSensitive(root, "success") : NULL;
+    bool valid = cJSON_IsTrue(success);
+    cJSON_Delete(root);
+    if (!valid)
+        ESP_LOGW(TAG, "Heartbeat response invalid");
+    return valid;
+}
+
 static void schedule_retry(cloud_lifecycle_t *lifecycle)
 {
     size_t delay_count = sizeof(RETRY_DELAYS_MS) / sizeof(RETRY_DELAYS_MS[0]);
@@ -402,17 +423,23 @@ static void accept_action(cloud_lifecycle_t *lifecycle,
     }
 }
 
-static TickType_t worker_wait_ticks(const cloud_lifecycle_t *lifecycle)
+static TickType_t worker_wait_ticks(const cloud_lifecycle_t *lifecycle,
+                                    int64_t next_heartbeat_ms)
 {
+    int64_t remaining_ms = next_heartbeat_ms - uptime_ms();
+    if (remaining_ms <= 0)
+        return 0;
     if (!lifecycle->active ||
         (lifecycle->event_id[0] != '\0' &&
          !lifecycle->cancel_pending &&
          !lifecycle->confirm_pending))
     {
-        return portMAX_DELAY;
+        return pdMS_TO_TICKS(remaining_ms);
     }
 
-    int64_t remaining_ms = lifecycle->next_attempt_ms - uptime_ms();
+    int64_t cloud_remaining_ms = lifecycle->next_attempt_ms - uptime_ms();
+    if (cloud_remaining_ms < remaining_ms)
+        remaining_ms = cloud_remaining_ms;
     if (remaining_ms <= 0)
         return 0;
     if (remaining_ms > 30000)
@@ -424,15 +451,25 @@ static void cloud_worker_task(void *arg)
 {
     (void)arg;
     cloud_lifecycle_t lifecycle = {0};
+    int64_t next_heartbeat_ms = uptime_ms();
 
     while (true)
     {
         cloud_action_t action;
         if (xQueueReceive(s_action_queue,
                           &action,
-                          worker_wait_ticks(&lifecycle)) == pdTRUE)
+                          worker_wait_ticks(&lifecycle, next_heartbeat_ms)) == pdTRUE)
         {
             accept_action(&lifecycle, &action);
+        }
+
+        if (uptime_ms() >= next_heartbeat_ms)
+        {
+            // Single cloud worker: never more than one heartbeat in flight.
+            // A failed request is retried at the next interval, without queueing.
+            if (wifi_manager_is_connected())
+                submit_heartbeat();
+            next_heartbeat_ms = uptime_ms() + CLOUD_HEARTBEAT_INTERVAL_MS;
         }
 
         if (!lifecycle.active || uptime_ms() < lifecycle.next_attempt_ms)
