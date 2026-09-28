@@ -6,9 +6,16 @@ import 'models/fall_event.dart';
 import 'screens/app_shell.dart';
 
 class FallDetectionApp extends StatelessWidget {
-  const FallDetectionApp({super.key, this.initialRoute});
+  const FallDetectionApp({
+    super.key,
+    this.initialRoute,
+    this.userEmail,
+    this.onLogout,
+  });
 
   final String? initialRoute;
+  final String? userEmail;
+  final Future<void> Function()? onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +30,8 @@ class FallDetectionApp extends StatelessWidget {
           settings: settings,
           builder: (_) => AppShell(
             route: route,
+            userEmail: userEmail,
+            onLogout: onLogout,
             initialEvent: settings.arguments is FallEvent
                 ? settings.arguments! as FallEvent
                 : null,

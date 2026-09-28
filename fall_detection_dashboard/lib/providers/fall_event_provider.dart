@@ -15,6 +15,7 @@ class FallEventProvider extends ChangeNotifier {
   int _loadGeneration = 0;
   int _upsertVersion = 0;
   final Map<String, int> _eventUpsertVersions = {};
+  bool _disposed = false;
 
   FallEventLoadStatus get status => _status;
   List<FallEvent> get events => List.unmodifiable(_events);
@@ -29,7 +30,7 @@ class FallEventProvider extends ChangeNotifier {
 
     try {
       final fetched = await _repository.getFallEvents();
-      if (loadGeneration != _loadGeneration) return;
+      if (_disposed || loadGeneration != _loadGeneration) return;
       final byId = <String, FallEvent>{
         for (final event in fetched) event.id: event,
       };
@@ -41,7 +42,7 @@ class FallEventProvider extends ChangeNotifier {
       _events = _newestFirst(byId.values);
       _status = FallEventLoadStatus.success;
     } catch (error, stackTrace) {
-      if (loadGeneration != _loadGeneration) return;
+      if (_disposed || loadGeneration != _loadGeneration) return;
       debugPrint('Không thể tải lịch sử Supabase: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (_upsertVersion > upsertVersionAtStart && _events.isNotEmpty) {
@@ -60,11 +61,12 @@ class FallEventProvider extends ChangeNotifier {
 
   Future<FallEvent?> loadEventById(String id) async {
     final event = await _repository.getFallEventById(id);
-    if (event != null) upsertOfficialEvent(event);
+    if (event != null && !_disposed) upsertOfficialEvent(event);
     return event;
   }
 
   void upsertOfficialEvent(FallEvent event) {
+    if (_disposed) return;
     final existing = _events.where((item) => item.id == event.id).firstOrNull;
     final latest = _preferTerminal(existing, event);
     _eventUpsertVersions[event.id] = ++_upsertVersion;
@@ -93,5 +95,12 @@ class FallEventProvider extends ChangeNotifier {
       return existing;
     }
     return incoming;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _loadGeneration++;
+    super.dispose();
   }
 }

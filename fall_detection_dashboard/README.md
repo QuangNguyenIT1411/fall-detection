@@ -2,7 +2,15 @@
 
 Flutter Web Dashboard cho đồ án **Hệ thống phát hiện té ngã cho người cao tuổi sử dụng ESP32-C3 + MPU6500**.
 
-> Trạng thái: **Phase 8 – đã chuẩn bị Flutter Web cho Vercel; chưa deploy**.
+> Trạng thái: **Phase 11 – caregiver login qua Supabase Auth**.
+
+## Phase 11: quyền truy cập dashboard
+
+- `AuthGate` chỉ tạo providers, tải lịch sử và kết nối MQTT sau khi Supabase Auth khôi phục phiên hoặc đăng nhập thành công. Đăng xuất hủy providers và ngắt MQTT.
+- Migration `008_dashboard_auth.sql` bỏ quyền đọc `anon` trên `devices` và `fall_events`; chỉ `authenticated` được `SELECT`. Backend `service_role` không đổi.
+- Supabase Auth `enable_signup = false`; chỉ quản trị viên tạo/mời tài khoản tại **Authentication → Users → Add user**. Không có giao diện đăng ký công khai.
+- Tài khoản người thân cần được xác nhận email trước khi đăng nhập nếu email confirmation được bật.
+- **Giới hạn đồ án:** MQTT credential subscribe-only vẫn được biên dịch trong Flutter Web và có thể được người xem mã client trích xuất. Supabase Auth bảo vệ giao diện và dữ liệu Supabase, không biến MQTT credential trong browser thành bí mật. Duy trì ACL subscribe-only; muốn bảo vệ broker chặt hơn cần kiến trúc proxy/token ngắn hạn riêng.
 
 ## Kiến trúc
 

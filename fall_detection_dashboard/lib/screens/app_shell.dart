@@ -16,10 +16,14 @@ class AppShell extends StatefulWidget {
     super.key,
     this.route = const AppRoute('/', 0),
     this.initialEvent,
+    this.userEmail,
+    this.onLogout,
   });
 
   final AppRoute route;
   final FallEvent? initialEvent;
+  final String? userEmail;
+  final Future<void> Function()? onLogout;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -170,9 +174,56 @@ class _AppShellState extends State<AppShell> {
                         label: Text(item.label),
                       ),
                   ],
+                  trailing: widget.onLogout == null
+                      ? null
+                      : Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (constraints.maxWidth >= 1180 &&
+                                  widget.userEmail != null)
+                                Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    widget.userEmail!,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              IconButton(
+                                key: const Key('logout-button'),
+                                tooltip: 'Đăng xuất',
+                                color: Colors.white,
+                                onPressed: widget.onLogout,
+                                icon: const Icon(Icons.logout),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+                        ),
                 ),
               Expanded(
-                child: IndexedStack(index: _selectedIndex, children: screens),
+                child: Column(
+                  children: [
+                    if (!useRail && widget.onLogout != null)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          key: const Key('logout-button'),
+                          onPressed: widget.onLogout,
+                          icon: const Icon(Icons.logout),
+                          label: const Text('Đăng xuất'),
+                        ),
+                      ),
+                    Expanded(
+                      child: IndexedStack(
+                        index: _selectedIndex,
+                        children: screens,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

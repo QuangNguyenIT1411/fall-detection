@@ -1,3 +1,7 @@
+[auth]
+enable_signup = false
+enable_anonymous_sign_ins = false
+
 [functions.create-fall-event]
 verify_jwt = false
 
