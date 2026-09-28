@@ -48,10 +48,11 @@ if [[ ! -x "$flutter_bin" ]]; then
   archive="$sdk_root/flutter.tar.xz"
   curl --fail --location --retry 3 --silent --show-error "$flutter_archive_url" --output "$archive"
   printf '%s  %s\n' "$flutter_sha256" "$archive" | sha256sum --check --status
-  tar -xf "$archive" -C "$sdk_root"
+  tar --no-same-owner -xf "$archive" -C "$sdk_root"
   rm "$archive"
 fi
 
+git config --global --add safe.directory "$sdk_root/flutter"
 export PATH="$sdk_root/flutter/bin:$PATH"
 export PUB_CACHE="${PUB_CACHE:-${TMPDIR:-/tmp}/fallguard-pub-cache}"
 "$flutter_bin" --version
