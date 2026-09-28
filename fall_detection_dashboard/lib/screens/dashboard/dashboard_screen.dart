@@ -96,7 +96,12 @@ class DashboardScreen extends StatelessWidget {
                       color: const Color(0xFF7C3AED),
                       subtitle: 'POSE',
                     ),
-                    _StateCard(telemetry: telemetry),
+                    _StateCard(
+                      telemetry: telemetry,
+                      presence: provider.source == TelemetrySource.mqtt
+                          ? provider.devicePresence
+                          : DevicePresence.online,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 22),
@@ -326,8 +331,9 @@ class _StatusPill extends StatelessWidget {
 }
 
 class _StateCard extends StatelessWidget {
-  const _StateCard({required this.telemetry});
+  const _StateCard({required this.telemetry, required this.presence});
   final Telemetry telemetry;
+  final DevicePresence presence;
 
   @override
   Widget build(BuildContext context) {
@@ -356,7 +362,18 @@ class _StateCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            StateBadge(state: telemetry.state),
+            if (presence == DevicePresence.online)
+              StateBadge(state: telemetry.state)
+            else
+              Text(
+                presence == DevicePresence.offline
+                    ? 'OFFLINE'
+                    : 'KHÔNG CÓ KẾT NỐI',
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
           ],
         ),
       ),

@@ -23,6 +23,8 @@ class TelemetryProvider extends ChangeNotifier {
     ],
     this._officialStatusPollInterval = const Duration(seconds: 2),
     this._officialStatusPollTimeout = const Duration(seconds: 60),
+    this.deviceOfflineTimeout = const Duration(seconds: 8),
+    DateTime Function()? now,
   }) : _current = Telemetry(
          deviceId: _dataSource.deviceCode,
          acc: 0,
@@ -33,16 +35,21 @@ class TelemetryProvider extends ChangeNotifier {
        ),
        _devicePresence = _dataSource.source == TelemetrySource.mock
            ? DevicePresence.online
-           : DevicePresence.unknown;
+           : DevicePresence.unknown,
+       _now = now ?? DateTime.now;
 
   static const maxPoints = 60;
+  static const deviceWatchdogCheckInterval = Duration(seconds: 1);
   final TelemetryDataSource _dataSource;
   final FallEventRepository? _officialEventRepository;
   final void Function(FallEvent event)? _onOfficialEvent;
   final List<Duration> _officialRetryDelays;
   final Duration _officialStatusPollInterval;
   final Duration _officialStatusPollTimeout;
+  final Duration deviceOfflineTimeout;
+  final DateTime Function() _now;
   StreamSubscription<RealtimeUpdate>? _subscription;
+  Timer? _deviceWatchdogTimer;
   Timer? _countdownTimer;
   Timer? _officialStatusTimer;
   bool _officialStatusRequestInFlight = false;
@@ -71,6 +78,7 @@ class TelemetryProvider extends ChangeNotifier {
   TelemetrySource get source => _dataSource.source;
   BrokerConnectionState get brokerState => _brokerState;
   DevicePresence get devicePresence => _devicePresence;
+  DateTime? get lastDeviceMessageAt => _lastDeviceMessageAt;
   String? get connectionMessage => _connectionMessage;
   int? get confirmationSecondsRemaining => _events.isEmpty
       ? null
@@ -85,12 +93,22 @@ class TelemetryProvider extends ChangeNotifier {
         ? 'Thiết bị phòng khách'
         : 'Thiết bị ${_dataSource.deviceCode}',
     isOnline: _devicePresence == DevicePresence.online,
-    lastSeen: _hasTelemetry ? _current.timestamp : null,
+    lastSeen: source == TelemetrySource.mqtt
+        ? _lastDeviceMessageAt
+        : _hasTelemetry
+        ? _current.timestamp
+        : null,
     createdAt: _current.timestamp,
   );
 
   void start() {
     _subscription ??= _dataSource.updates.listen(_onUpdate);
+    if (source == TelemetrySource.mqtt) {
+      _deviceWatchdogTimer ??= Timer.periodic(
+        deviceWatchdogCheckInterval,
+        (_) => _checkDevicePresence(),
+      );
+    }
     unawaited(_dataSource.start());
   }
 
@@ -115,17 +133,47 @@ class TelemetryProvider extends ChangeNotifier {
   void _onUpdate(RealtimeUpdate update) {
     switch (update) {
       case TelemetryUpdate(:final telemetry):
+        if (telemetry.deviceId != _dataSource.deviceCode) break;
+        _markDeviceMessageReceived();
         _onTelemetry(telemetry);
       case FallStateUpdate(:final deviceId, :final state, :final timestamp):
+        if (deviceId == _dataSource.deviceCode) {
+          _markDeviceMessageReceived();
+        }
         _onState(deviceId, state, timestamp);
       case DeviceStatusUpdate(:final deviceId, :final presence):
         if (deviceId == _dataSource.deviceCode) {
-          _devicePresence = presence;
+          if (presence == DevicePresence.online) {
+            _markDeviceMessageReceived();
+          } else {
+            _devicePresence = DevicePresence.offline;
+            _hasTelemetry = false;
+          }
         }
       case BrokerStatusUpdate(:final state, :final message):
         _brokerState = state;
         _connectionMessage = message;
     }
+    notifyListeners();
+  }
+
+  DateTime? _lastDeviceMessageAt;
+
+  void _markDeviceMessageReceived() {
+    if (source != TelemetrySource.mqtt) return;
+    _lastDeviceMessageAt = _now();
+    _devicePresence = DevicePresence.online;
+  }
+
+  void _checkDevicePresence() {
+    if (_disposed || _devicePresence != DevicePresence.online) return;
+    final lastMessage = _lastDeviceMessageAt;
+    if (lastMessage == null ||
+        _now().difference(lastMessage) <= deviceOfflineTimeout) {
+      return;
+    }
+    _devicePresence = DevicePresence.offline;
+    _hasTelemetry = false;
     notifyListeners();
   }
 
@@ -342,6 +390,7 @@ class TelemetryProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _deviceWatchdogTimer?.cancel();
     _reconcileGeneration++;
     _stopOfficialStatusTracking();
     _subscription?.cancel();

@@ -49,10 +49,22 @@ class RealtimeScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    StateBadge(
-                      state: provider.current.state,
-                      large: width > 500,
-                    ),
+                    if (provider.source == TelemetrySource.mqtt &&
+                        provider.devicePresence != DevicePresence.online)
+                      Text(
+                        provider.devicePresence == DevicePresence.offline
+                            ? 'OFFLINE'
+                            : 'KHÔNG CÓ KẾT NỐI',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      )
+                    else
+                      StateBadge(
+                        state: provider.current.state,
+                        large: width > 500,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 24),

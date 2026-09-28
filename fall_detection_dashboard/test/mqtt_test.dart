@@ -7,9 +7,13 @@ import 'package:fall_detection_dashboard/models/realtime_update.dart';
 import 'package:fall_detection_dashboard/models/telemetry.dart';
 import 'package:fall_detection_dashboard/providers/fall_event_provider.dart';
 import 'package:fall_detection_dashboard/providers/telemetry_provider.dart';
+import 'package:fall_detection_dashboard/screens/dashboard/dashboard_screen.dart';
+import 'package:fall_detection_dashboard/screens/realtime/realtime_screen.dart';
 import 'package:fall_detection_dashboard/services/fall_event_repository.dart';
 import 'package:fall_detection_dashboard/services/telemetry_data_source.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 void main() {
   const config = MqttConfig(
@@ -21,6 +25,132 @@ void main() {
     websocketPath: '/mqtt',
     deviceCode: 'device01',
   );
+
+  testWidgets('telemetry liên tục giữ ONLINE; ngừng quá 8 giây thành OFFLINE', (
+    tester,
+  ) async {
+    final source = _FakeMqttSource();
+    var receivedAt = DateTime.utc(2026, 9, 28, 8);
+    final provider = TelemetryProvider(source, now: () => receivedAt)..start();
+
+    source.emit(TelemetryUpdate(_watchdogTelemetry()));
+    expect(provider.devicePresence, DevicePresence.online);
+    receivedAt = receivedAt.add(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 5));
+    expect(provider.devicePresence, DevicePresence.online);
+
+    source.emit(TelemetryUpdate(_watchdogTelemetry()));
+    receivedAt = receivedAt.add(const Duration(seconds: 7));
+    await tester.pump(const Duration(seconds: 7));
+    expect(provider.devicePresence, DevicePresence.online);
+
+    receivedAt = receivedAt.add(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
+    expect(provider.devicePresence, DevicePresence.offline);
+    expect(provider.hasTelemetry, isFalse);
+    provider.dispose();
+  });
+
+  testWidgets('LWT offline có hiệu lực ngay; telemetry mới phục hồi ONLINE', (
+    tester,
+  ) async {
+    final source = _FakeMqttSource();
+    final provider = TelemetryProvider(source)..start();
+    source.emit(TelemetryUpdate(_watchdogTelemetry()));
+    expect(provider.devicePresence, DevicePresence.online);
+
+    source.emit(
+      DeviceStatusUpdate(
+        deviceId: 'device01',
+        presence: DevicePresence.offline,
+        timestamp: DateTime.now(),
+      ),
+    );
+    expect(provider.devicePresence, DevicePresence.offline);
+    expect(provider.hasTelemetry, isFalse);
+
+    source.emit(TelemetryUpdate(_watchdogTelemetry()));
+    expect(provider.devicePresence, DevicePresence.online);
+    expect(provider.hasTelemetry, isTrue);
+    provider.dispose();
+  });
+
+  testWidgets('retained online=true không có telemetry hết hạn sau watchdog', (
+    tester,
+  ) async {
+    final source = _FakeMqttSource();
+    var receivedAt = DateTime.utc(2026, 9, 28, 8);
+    final provider = TelemetryProvider(source, now: () => receivedAt)..start();
+    source.emit(
+      DeviceStatusUpdate(
+        deviceId: 'device01',
+        presence: DevicePresence.online,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(1000),
+      ),
+    );
+    expect(provider.devicePresence, DevicePresence.online);
+    expect(provider.lastDeviceMessageAt, receivedAt);
+    receivedAt = receivedAt.add(const Duration(seconds: 9));
+    await tester.pump(const Duration(seconds: 9));
+    expect(provider.devicePresence, DevicePresence.offline);
+    provider.dispose();
+  });
+
+  testWidgets('state mới làm mới thời gian nhận và phục hồi ONLINE', (
+    tester,
+  ) async {
+    final source = _FakeMqttSource();
+    var receivedAt = DateTime.utc(2026, 9, 28, 8);
+    final provider = TelemetryProvider(source, now: () => receivedAt)..start();
+    source.emit(TelemetryUpdate(_watchdogTelemetry()));
+    receivedAt = receivedAt.add(const Duration(seconds: 9));
+    await tester.pump(const Duration(seconds: 9));
+    expect(provider.devicePresence, DevicePresence.offline);
+
+    source.emit(
+      FallStateUpdate(
+        deviceId: 'device01',
+        state: FallState.normal,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(2000),
+      ),
+    );
+    expect(provider.devicePresence, DevicePresence.online);
+    expect(provider.lastDeviceMessageAt, receivedAt);
+    provider.dispose();
+  });
+
+  testWidgets('OFFLINE không hiển thị STATE NORMAL như realtime', (
+    tester,
+  ) async {
+    final source = _FakeMqttSource();
+    final provider = TelemetryProvider(source)..start();
+    source.emit(
+      DeviceStatusUpdate(
+        deviceId: 'device01',
+        presence: DevicePresence.offline,
+        timestamp: DateTime.now(),
+      ),
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<TelemetryProvider>.value(
+        value: provider,
+        child: MaterialApp(home: DashboardScreen(onOpenEvent: (_) {})),
+      ),
+    );
+    expect(find.text('NORMAL'), findsNothing);
+    expect(find.text('OFFLINE'), findsWidgets);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<TelemetryProvider>.value(
+        value: provider,
+        child: const MaterialApp(home: RealtimeScreen()),
+      ),
+    );
+    expect(find.text('NORMAL'), findsNothing);
+    expect(find.text('OFFLINE'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    provider.dispose();
+  });
 
   test('MQTT topics và WebSocket URL được build từ config', () {
     expect(config.isConfigured, isTrue);
@@ -281,6 +411,15 @@ void main() {
     provider.dispose();
   });
 }
+
+Telemetry _watchdogTelemetry() => Telemetry(
+  deviceId: 'device01',
+  acc: 1.0,
+  gyro: 0.2,
+  pose: 10.0,
+  state: FallState.normal,
+  timestamp: DateTime.fromMillisecondsSinceEpoch(1000),
+);
 
 FallStateUpdate _fallState(FallState state) => FallStateUpdate(
   deviceId: 'device01',
