@@ -1,0 +1,19 @@
+idf_component_register(
+    SRCS
+        "hello_world_main.c"
+        "wifi_manager.c"
+        "mqtt_manager.c"
+        "cloud_event_service.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        driver
+        esp_timer
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
+        mqtt
+        mbedtls
+        esp_http_client
+        json
+)

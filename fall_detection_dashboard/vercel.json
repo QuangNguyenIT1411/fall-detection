@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo 'Flutter dependencies are installed by scripts/build_vercel.sh'",
+  "buildCommand": "bash scripts/build_vercel.sh",
+  "outputDirectory": "build/web",
+  "rewrites": [
+    { "source": "/overview", "destination": "/index.html" },
+    { "source": "/realtime", "destination": "/index.html" },
+    { "source": "/history", "destination": "/index.html" },
+    { "source": "/events/:id", "destination": "/index.html" }
+  ]
+}
