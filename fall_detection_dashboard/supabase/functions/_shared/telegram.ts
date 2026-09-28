@@ -10,6 +10,13 @@ export interface ConfirmedFallNotification {
   lowGToImpactMs: number | null;
 }
 
+export interface SosNotification {
+  id: string;
+  deviceName: string;
+  deviceCode: string;
+  detectedAt: string;
+}
+
 export type TelegramFailure =
   | "missing_config"
   | "transport_error"
@@ -57,6 +64,21 @@ export function formatFallConfirmedMessage(event: ConfirmedFallNotification): st
   ].join("\n");
 }
 
+export function formatSosMessage(event: SosNotification): string {
+  return [
+    "🆘 YÊU CẦU TRỢ GIÚP KHẨN CẤP",
+    "",
+    `Thiết bị: ${oneLine(event.deviceName)} (${oneLine(event.deviceCode)})`,
+    `Thời gian: ${vietnamTime(event.detectedAt)}`,
+    "",
+    "Người dùng đã chủ động yêu cầu trợ giúp bằng nút SOS.",
+    "",
+    `Sự kiện: ${event.id}`,
+    "",
+    "Vui lòng kiểm tra tình trạng người dùng ngay.",
+  ].join("\n");
+}
+
 export interface DevicePresenceNotification {
   deviceName: string;
   deviceCode: string;
@@ -101,13 +123,27 @@ export async function sendFallConfirmedNotification(
 ): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
   return sendTelegramText(formatFallConfirmedMessage(event), {
     ...options,
-    replyMarkup: {
-      inline_keyboard: [[{
-        text: "✅ Đã nhận cảnh báo",
-        callback_data: `ack:${event.id}`,
-      }]],
-    },
+    replyMarkup: acknowledgementButton(event.id),
   });
+}
+
+export async function sendSosNotification(
+  event: SosNotification,
+  options: { token?: string; chatId?: string; fetchImpl?: typeof fetch } = {},
+): Promise<{ ok: true } | { ok: false; error: TelegramFailure }> {
+  return sendTelegramText(formatSosMessage(event), {
+    ...options,
+    replyMarkup: acknowledgementButton(event.id),
+  });
+}
+
+function acknowledgementButton(id: string) {
+  return {
+    inline_keyboard: [[{
+      text: "✅ Đã nhận cảnh báo",
+      callback_data: `ack:${id}`,
+    }]],
+  };
 }
 
 async function sendTelegramText(

@@ -48,7 +48,7 @@ void main() {
   testWidgets('direct /history route renders after refresh', (tester) async {
     await tester.pumpWidget(buildTestApp(initialRoute: '/history'));
     await tester.pumpAndSettle();
-    expect(find.text('Lịch sử té ngã'), findsOneWidget);
+    expect(find.text('Lịch sử cảnh báo'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -137,8 +137,8 @@ void main() {
 
     await tester.tap(find.text('Lịch sử'));
     await tester.pumpAndSettle();
-    expect(find.text('Lịch sử té ngã'), findsOneWidget);
-    expect(find.text('Chưa có sự kiện té ngã.'), findsOneWidget);
+    expect(find.text('Lịch sử cảnh báo'), findsOneWidget);
+    expect(find.text('Chưa có sự kiện cảnh báo.'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

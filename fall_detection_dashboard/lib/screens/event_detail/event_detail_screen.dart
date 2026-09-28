@@ -65,8 +65,10 @@ class EventDetailScreen extends StatelessWidget {
                         width: double.infinity,
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFBE123C), AppColors.red],
+                          gradient: LinearGradient(
+                            colors: currentEvent.eventType == FallEventType.sos
+                                ? [AppColors.amber, AppColors.red]
+                                : [const Color(0xFFBE123C), AppColors.red],
                           ),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -75,16 +77,20 @@ class EventDetailScreen extends StatelessWidget {
                           runSpacing: 12,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            const Icon(
-                              Icons.warning_amber_rounded,
+                            Icon(
+                              currentEvent.eventType == FallEventType.sos
+                                  ? Icons.sos_rounded
+                                  : Icons.warning_amber_rounded,
                               color: Colors.white,
                               size: 42,
                             ),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'PHÁT HIỆN TÉ NGÃ',
+                                Text(
+                                  currentEvent.eventType == FallEventType.sos
+                                      ? '🆘 YÊU CẦU TRỢ GIÚP KHẨN CẤP'
+                                      : 'PHÁT HIỆN TÉ NGÃ',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 21,
@@ -132,6 +138,16 @@ class EventDetailScreen extends StatelessWidget {
                                         : '${currentEvent.device!.name} '
                                               '(${currentEvent.device!.deviceCode})',
                                   ),
+                                  if (currentEvent.eventType ==
+                                      FallEventType.sos)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Thời gian SOS',
+                                      value: DateFormat('dd/MM/yyyy HH:mm:ss')
+                                          .format(
+                                            currentEvent.detectedAt.toLocal(),
+                                          ),
+                                    ),
                                   SizedBox(
                                     width: itemWidth,
                                     child: Column(
@@ -152,47 +168,57 @@ class EventDetailScreen extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                  _DetailItem(
-                                    width: itemWidth,
-                                    label: currentEvent.isLocalRealtime
-                                        ? 'ACC hiện tại'
-                                        : 'Peak ACC',
-                                    value: currentEvent.peakAcc == null
-                                        ? '—'
-                                        : '${currentEvent.peakAcc!.toStringAsFixed(2)} g',
-                                  ),
-                                  _DetailItem(
-                                    width: itemWidth,
-                                    label: currentEvent.isLocalRealtime
-                                        ? 'GYRO hiện tại'
-                                        : 'Peak GYRO',
-                                    value: currentEvent.peakGyro == null
-                                        ? '—'
-                                        : '${currentEvent.peakGyro!.toStringAsFixed(1)} dps',
-                                  ),
-                                  _DetailItem(
-                                    width: itemWidth,
-                                    label: currentEvent.isLocalRealtime
-                                        ? 'POSE hiện tại'
-                                        : 'Final POSE',
-                                    value: currentEvent.finalPose == null
-                                        ? '—'
-                                        : '${currentEvent.finalPose!.toStringAsFixed(1)}°',
-                                  ),
-                                  _DetailItem(
-                                    width: itemWidth,
-                                    label: 'LOW-G duration',
-                                    value: currentEvent.lowGDurationMs == null
-                                        ? '—'
-                                        : '${currentEvent.lowGDurationMs} ms',
-                                  ),
-                                  _DetailItem(
-                                    width: itemWidth,
-                                    label: 'LOW-G → IMPACT',
-                                    value: currentEvent.lowGToImpactMs == null
-                                        ? '—'
-                                        : '${currentEvent.lowGToImpactMs} ms',
-                                  ),
+                                  if (currentEvent.eventType ==
+                                      FallEventType.fall)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: currentEvent.isLocalRealtime
+                                          ? 'ACC hiện tại'
+                                          : 'Peak ACC',
+                                      value: currentEvent.peakAcc == null
+                                          ? '—'
+                                          : '${currentEvent.peakAcc!.toStringAsFixed(2)} g',
+                                    ),
+                                  if (currentEvent.eventType ==
+                                      FallEventType.fall)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: currentEvent.isLocalRealtime
+                                          ? 'GYRO hiện tại'
+                                          : 'Peak GYRO',
+                                      value: currentEvent.peakGyro == null
+                                          ? '—'
+                                          : '${currentEvent.peakGyro!.toStringAsFixed(1)} dps',
+                                    ),
+                                  if (currentEvent.eventType ==
+                                      FallEventType.fall)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: currentEvent.isLocalRealtime
+                                          ? 'POSE hiện tại'
+                                          : 'Final POSE',
+                                      value: currentEvent.finalPose == null
+                                          ? '—'
+                                          : '${currentEvent.finalPose!.toStringAsFixed(1)}°',
+                                    ),
+                                  if (currentEvent.eventType ==
+                                      FallEventType.fall)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'LOW-G duration',
+                                      value: currentEvent.lowGDurationMs == null
+                                          ? '—'
+                                          : '${currentEvent.lowGDurationMs} ms',
+                                    ),
+                                  if (currentEvent.eventType ==
+                                      FallEventType.fall)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'LOW-G → IMPACT',
+                                      value: currentEvent.lowGToImpactMs == null
+                                          ? '—'
+                                          : '${currentEvent.lowGToImpactMs} ms',
+                                    ),
                                   if (currentEvent.cancelledAt != null)
                                     _DetailItem(
                                       width: itemWidth,

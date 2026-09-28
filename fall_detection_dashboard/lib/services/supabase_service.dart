@@ -80,6 +80,7 @@ class SupabaseService implements FallEventRepository {
       final row = await _client
           .from('fall_events')
           .select('*, devices!inner(*)')
+          .eq('event_type', 'FALL')
           .eq('devices.device_code', deviceCode)
           .gte('detected_at', detectedAfter.toUtc().toIso8601String())
           .order('detected_at', ascending: false)

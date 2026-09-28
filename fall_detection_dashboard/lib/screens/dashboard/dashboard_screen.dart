@@ -7,9 +7,11 @@ import '../../models/fall_event.dart';
 import '../../models/realtime_update.dart';
 import '../../models/telemetry.dart';
 import '../../providers/telemetry_provider.dart';
+import '../../providers/fall_event_provider.dart';
 import '../../widgets/fall_alert.dart';
 import '../../widgets/metric_card.dart';
 import '../../widgets/state_badge.dart';
+import '../../widgets/sos_alert.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key, required this.onOpenEvent});
@@ -19,6 +21,15 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TelemetryProvider>();
+    final events =
+        context.watch<FallEventProvider?>()?.events ?? const <FallEvent>[];
+    final latestSos = events
+        .where(
+          (event) =>
+              event.eventType == FallEventType.sos &&
+              event.acknowledgedAt == null,
+        )
+        .firstOrNull;
     final telemetry = provider.current;
     final width = MediaQuery.sizeOf(context).width;
     final columns = width >= 1400
@@ -55,6 +66,13 @@ class DashboardScreen extends StatelessWidget {
                         provider.confirmationSecondsRemaining,
                     onDismiss: provider.dismissAlert,
                     onViewDetail: () => onOpenEvent(provider.events.first),
+                  ),
+                ],
+                if (latestSos != null) ...[
+                  const SizedBox(height: 22),
+                  SosAlert(
+                    event: latestSos,
+                    onViewDetail: () => onOpenEvent(latestSos),
                   ),
                 ],
                 const SizedBox(height: 26),

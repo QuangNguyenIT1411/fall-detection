@@ -19,3 +19,4 @@ esp_err_t cloud_event_service_init(void);
 bool cloud_event_enqueue_fall(const cloud_fall_event_t *event);
 bool cloud_event_enqueue_cancel(void);
 bool cloud_event_enqueue_confirm(void);
+bool cloud_event_enqueue_sos(const char request_key[37]);

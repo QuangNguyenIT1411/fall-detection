@@ -15,6 +15,7 @@
 #include "wifi_manager.h"
 
 #define CLOUD_EVENT_QUEUE_LENGTH 4
+#define CLOUD_SOS_QUEUE_LENGTH 8
 #define CLOUD_EVENT_TASK_STACK_SIZE 8192
 #define CLOUD_EVENT_TASK_PRIORITY 4
 #define CLOUD_EVENT_URL_SIZE 192
@@ -49,6 +50,14 @@ typedef struct
 
 typedef struct
 {
+    bool active;
+    char request_key[CLOUD_EVENT_ID_SIZE];
+    unsigned int retry_index;
+    int64_t next_attempt_ms;
+} cloud_sos_t;
+
+typedef struct
+{
     char data[CLOUD_EVENT_RESPONSE_SIZE];
     size_t length;
     bool truncated;
@@ -57,6 +66,7 @@ typedef struct
 static const char *TAG = "CLOUD_EVENT";
 #if CLOUD_EVENT_ENABLED
 static QueueHandle_t s_action_queue = NULL;
+static QueueHandle_t s_sos_queue = NULL;
 
 static int64_t uptime_ms(void)
 {
@@ -342,6 +352,41 @@ static bool submit_heartbeat(void)
     return valid;
 }
 
+static bool submit_sos(const char *request_key)
+{
+    char payload[CLOUD_EVENT_PAYLOAD_SIZE];
+    int written = snprintf(payload, sizeof(payload),
+                           "{\"request_id\":\"%s\"}", request_key);
+    if (!format_ok(written, sizeof(payload)))
+        return false;
+
+    http_response_buffer_t response;
+    int status_code = 0;
+    esp_err_t err = post_json("create-sos-event", payload,
+                              &response, &status_code);
+    if (err != ESP_OK || (status_code != 200 && status_code != 201))
+    {
+        ESP_LOGW(TAG, "SOS upload failed: transport=%s http=%d",
+                 esp_err_to_name(err), status_code);
+        return false;
+    }
+    cJSON *root = cJSON_Parse(response.data);
+    cJSON *success = root ? cJSON_GetObjectItemCaseSensitive(root, "success") : NULL;
+    cJSON *id = root ? cJSON_GetObjectItemCaseSensitive(root, "event_id") : NULL;
+    cJSON *status = root ? cJSON_GetObjectItemCaseSensitive(root, "status") : NULL;
+    cJSON *type = root ? cJSON_GetObjectItemCaseSensitive(root, "event_type") : NULL;
+    cJSON *sent_at = root ? cJSON_GetObjectItemCaseSensitive(root, "notification_sent_at") : NULL;
+    bool valid = cJSON_IsTrue(success) && cJSON_IsString(id) &&
+                 valid_uuid(id->valuestring) && cJSON_IsString(status) &&
+                 strcmp(status->valuestring, "CONFIRMED") == 0 &&
+                 cJSON_IsString(type) && strcmp(type->valuestring, "SOS") == 0 &&
+                 cJSON_IsString(sent_at);
+    if (valid)
+        ESP_LOGI(TAG, "SOS event delivered: %s", id->valuestring);
+    cJSON_Delete(root);
+    return valid;
+}
+
 static void schedule_retry(cloud_lifecycle_t *lifecycle)
 {
     size_t delay_count = sizeof(RETRY_DELAYS_MS) / sizeof(RETRY_DELAYS_MS[0]);
@@ -365,6 +410,19 @@ static void schedule_retry(cloud_lifecycle_t *lifecycle)
              "Cloud %s retry scheduled in %lld ms",
              operation,
              (long long)delay_ms);
+}
+
+static void schedule_sos_retry(cloud_sos_t *sos)
+{
+    size_t count = sizeof(RETRY_DELAYS_MS) / sizeof(RETRY_DELAYS_MS[0]);
+    size_t index = sos->retry_index;
+    if (index >= count)
+        index = count - 1;
+    sos->next_attempt_ms = uptime_ms() + RETRY_DELAYS_MS[index];
+    if (sos->retry_index < count - 1)
+        sos->retry_index++;
+    ESP_LOGW(TAG, "SOS retry scheduled in %lld ms",
+             (long long)RETRY_DELAYS_MS[index]);
 }
 
 static void accept_action(cloud_lifecycle_t *lifecycle,
@@ -424,26 +482,31 @@ static void accept_action(cloud_lifecycle_t *lifecycle,
 }
 
 static TickType_t worker_wait_ticks(const cloud_lifecycle_t *lifecycle,
+                                    const cloud_sos_t *sos,
                                     int64_t next_heartbeat_ms)
 {
     int64_t remaining_ms = next_heartbeat_ms - uptime_ms();
     if (remaining_ms <= 0)
         return 0;
-    if (!lifecycle->active ||
-        (lifecycle->event_id[0] != '\0' &&
-         !lifecycle->cancel_pending &&
-         !lifecycle->confirm_pending))
+    if (lifecycle->active &&
+        (lifecycle->event_id[0] == '\0' || lifecycle->cancel_pending ||
+         lifecycle->confirm_pending))
     {
-        return pdMS_TO_TICKS(remaining_ms);
+        int64_t due = lifecycle->next_attempt_ms - uptime_ms();
+        if (due < remaining_ms)
+            remaining_ms = due;
     }
-
-    int64_t cloud_remaining_ms = lifecycle->next_attempt_ms - uptime_ms();
-    if (cloud_remaining_ms < remaining_ms)
-        remaining_ms = cloud_remaining_ms;
+    if (sos->active)
+    {
+        int64_t due = sos->next_attempt_ms - uptime_ms();
+        if (due < remaining_ms)
+            remaining_ms = due;
+    }
     if (remaining_ms <= 0)
         return 0;
-    if (remaining_ms > 30000)
-        remaining_ms = 30000;
+    // Poll the independent SOS queue without blocking the sensor task.
+    if (remaining_ms > 100)
+        remaining_ms = 100;
     return pdMS_TO_TICKS(remaining_ms);
 }
 
@@ -451,6 +514,7 @@ static void cloud_worker_task(void *arg)
 {
     (void)arg;
     cloud_lifecycle_t lifecycle = {0};
+    cloud_sos_t sos = {0};
     int64_t next_heartbeat_ms = uptime_ms();
 
     while (true)
@@ -458,7 +522,7 @@ static void cloud_worker_task(void *arg)
         cloud_action_t action;
         if (xQueueReceive(s_action_queue,
                           &action,
-                          worker_wait_ticks(&lifecycle, next_heartbeat_ms)) == pdTRUE)
+                          worker_wait_ticks(&lifecycle, &sos, next_heartbeat_ms)) == pdTRUE)
         {
             accept_action(&lifecycle, &action);
         }
@@ -472,51 +536,64 @@ static void cloud_worker_task(void *arg)
             next_heartbeat_ms = uptime_ms() + CLOUD_HEARTBEAT_INTERVAL_MS;
         }
 
-        if (!lifecycle.active || uptime_ms() < lifecycle.next_attempt_ms)
-            continue;
-
-        if (lifecycle.event_id[0] != '\0' &&
-            !lifecycle.cancel_pending &&
-            !lifecycle.confirm_pending)
-            continue;
-
-        if (!wifi_manager_is_connected())
+        if (lifecycle.active && uptime_ms() >= lifecycle.next_attempt_ms &&
+            (lifecycle.event_id[0] == '\0' || lifecycle.cancel_pending ||
+             lifecycle.confirm_pending))
         {
-            schedule_retry(&lifecycle);
-            continue;
-        }
-
-        bool success;
-        if (lifecycle.event_id[0] == '\0')
-        {
-            success = submit_create(&lifecycle.fall, lifecycle.event_id);
-            if (success)
+            if (!wifi_manager_is_connected())
             {
-                lifecycle.retry_index = 0;
-                lifecycle.next_attempt_ms = (lifecycle.cancel_pending ||
-                                             lifecycle.confirm_pending)
-                    ? uptime_ms()
-                    : 0;
+                schedule_retry(&lifecycle);
+            }
+            else
+            {
+                bool success;
+                if (lifecycle.event_id[0] == '\0')
+                {
+                    success = submit_create(&lifecycle.fall, lifecycle.event_id);
+                    if (success)
+                    {
+                        lifecycle.retry_index = 0;
+                        lifecycle.next_attempt_ms = (lifecycle.cancel_pending ||
+                                                     lifecycle.confirm_pending)
+                            ? uptime_ms() : 0;
+                    }
+                }
+                else if (lifecycle.cancel_pending)
+                {
+                    success = submit_cancel(lifecycle.event_id);
+                    if (success)
+                        memset(&lifecycle, 0, sizeof(lifecycle));
+                }
+                else
+                {
+                    success = submit_confirm(lifecycle.event_id);
+                    if (success)
+                        memset(&lifecycle, 0, sizeof(lifecycle));
+                }
+                if (!success && lifecycle.active)
+                    schedule_retry(&lifecycle);
             }
         }
-        else if (lifecycle.cancel_pending)
-        {
-            success = submit_cancel(lifecycle.event_id);
-            if (success)
-                memset(&lifecycle, 0, sizeof(lifecycle));
-        }
-        else
-        {
-            ESP_LOGI(TAG,
-                     "Cloud confirm sending event_id=%s",
-                     lifecycle.event_id);
-            success = submit_confirm(lifecycle.event_id);
-            if (success)
-                memset(&lifecycle, 0, sizeof(lifecycle));
-        }
 
-        if (!success && lifecycle.active)
-            schedule_retry(&lifecycle);
+        if (!sos.active &&
+            xQueueReceive(s_sos_queue, sos.request_key, 0) == pdTRUE)
+        {
+            sos.active = true;
+            sos.next_attempt_ms = uptime_ms();
+            sos.retry_index = 0;
+        }
+        if (sos.active && uptime_ms() >= sos.next_attempt_ms)
+        {
+            if (!wifi_manager_is_connected() ||
+                !submit_sos(sos.request_key))
+            {
+                schedule_sos_retry(&sos);
+            }
+            else
+            {
+                memset(&sos, 0, sizeof(sos));
+            }
+        }
     }
 }
 #endif
@@ -541,6 +618,14 @@ esp_err_t cloud_event_service_init(void)
     if (s_action_queue == NULL)
         return ESP_ERR_NO_MEM;
 
+    s_sos_queue = xQueueCreate(CLOUD_SOS_QUEUE_LENGTH, CLOUD_EVENT_ID_SIZE);
+    if (s_sos_queue == NULL)
+    {
+        vQueueDelete(s_action_queue);
+        s_action_queue = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
     BaseType_t task_created = xTaskCreate(cloud_worker_task,
                                          "cloud_event",
                                          CLOUD_EVENT_TASK_STACK_SIZE,
@@ -550,7 +635,9 @@ esp_err_t cloud_event_service_init(void)
     if (task_created != pdPASS)
     {
         vQueueDelete(s_action_queue);
+        vQueueDelete(s_sos_queue);
         s_action_queue = NULL;
+        s_sos_queue = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -626,6 +713,23 @@ bool cloud_event_enqueue_confirm(void)
     }
 
     ESP_LOGI(TAG, "Cloud confirm queued");
+    return true;
+#endif
+}
+
+bool cloud_event_enqueue_sos(const char request_key[37])
+{
+#if !CLOUD_EVENT_ENABLED
+    (void)request_key;
+    return false;
+#else
+    if (s_sos_queue == NULL || !valid_uuid(request_key))
+        return false;
+    if (xQueueSend(s_sos_queue, request_key, 0) != pdTRUE)
+    {
+        return false;
+    }
+    ESP_LOGI(TAG, "SOS cloud action queued");
     return true;
 #endif
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/fall_event.dart';
@@ -16,17 +18,26 @@ class FallEventProvider extends ChangeNotifier {
   int _upsertVersion = 0;
   final Map<String, int> _eventUpsertVersions = {};
   bool _disposed = false;
+  Timer? _refreshTimer;
 
   FallEventLoadStatus get status => _status;
   List<FallEvent> get events => List.unmodifiable(_events);
   String? get errorMessage => _errorMessage;
 
-  Future<void> loadEvents() async {
+  void startAutoRefresh({Duration interval = const Duration(seconds: 8)}) {
+    _refreshTimer ??= Timer.periodic(interval, (_) {
+      if (!_disposed) loadEvents(silent: true);
+    });
+  }
+
+  Future<void> loadEvents({bool silent = false}) async {
     final loadGeneration = ++_loadGeneration;
     final upsertVersionAtStart = _upsertVersion;
-    _status = FallEventLoadStatus.loading;
-    _errorMessage = null;
-    notifyListeners();
+    if (!silent) {
+      _status = FallEventLoadStatus.loading;
+      _errorMessage = null;
+      notifyListeners();
+    }
 
     try {
       final fetched = await _repository.getFallEvents();
@@ -43,6 +54,7 @@ class FallEventProvider extends ChangeNotifier {
       _status = FallEventLoadStatus.success;
     } catch (error, stackTrace) {
       if (_disposed || loadGeneration != _loadGeneration) return;
+      if (silent) return;
       debugPrint('Không thể tải lịch sử Supabase: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (_upsertVersion > upsertVersionAtStart && _events.isNotEmpty) {
@@ -100,6 +112,7 @@ class FallEventProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _refreshTimer?.cancel();
     _loadGeneration++;
     super.dispose();
   }

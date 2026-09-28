@@ -1,5 +1,16 @@
 import 'device.dart';
 
+enum FallEventType {
+  fall('FALL'),
+  sos('SOS');
+
+  const FallEventType(this.databaseValue);
+  final String databaseValue;
+
+  static FallEventType fromDatabase(Object? value) =>
+      value == 'SOS' ? FallEventType.sos : FallEventType.fall;
+}
+
 enum FallEventStatus {
   detected('DETECTED'),
   cancelled('CANCELLED'),
@@ -30,6 +41,7 @@ class FallEvent {
     required this.status,
     required this.cancelledAt,
     required this.createdAt,
+    this.eventType = FallEventType.fall,
     this.confirmedAt,
     this.notificationSentAt,
     this.acknowledgedAt,
@@ -39,6 +51,7 @@ class FallEvent {
   });
 
   final String id;
+  final FallEventType eventType;
   final String deviceId;
   final DateTime detectedAt;
   final double? peakAcc;
@@ -60,6 +73,7 @@ class FallEvent {
     final deviceJson = json['devices'];
     return FallEvent(
       id: json['id'] as String,
+      eventType: FallEventType.fromDatabase(json['event_type']),
       deviceId: json['device_id'] as String,
       detectedAt: DateTime.parse(json['detected_at'] as String),
       peakAcc: _toDouble(json['peak_acc']),
@@ -85,6 +99,7 @@ class FallEvent {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'event_type': eventType.databaseValue,
     'device_id': deviceId,
     'detected_at': detectedAt.toUtc().toIso8601String(),
     'peak_acc': peakAcc,

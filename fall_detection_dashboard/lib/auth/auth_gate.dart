@@ -101,7 +101,9 @@ class _AuthGateState extends State<AuthGate> {
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider<FallEventProvider>(
-            create: (_) => FallEventProvider(widget.repository)..loadEvents(),
+            create: (_) => FallEventProvider(widget.repository)
+              ..loadEvents()
+              ..startAutoRefresh(),
           ),
           ChangeNotifierProvider<TelemetryProvider>(
             create: (context) => TelemetryProvider(

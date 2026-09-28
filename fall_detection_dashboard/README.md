@@ -284,3 +284,37 @@ Chưa chạy deploy trong Phase 8. Sau khi đưa project lên Git, import reposi
 vào Vercel, đặt Root Directory như trên, thêm Environment Variables, kiểm tra
 Preview rồi mới deploy Production. Sau deploy, thử tải trực tiếp `/history`
 và `/events/<UUID>`, kiểm tra MQTT CONNECTED, thiết bị ONLINE và lịch sử.
+
+## Phase 12: SOS thủ công bằng nút GPIO3
+
+Chỉ khi thuật toán đang ở `NORMAL`, giữ nút GPIO3 ít nhất 3 giây sẽ kích hoạt
+một SOS. Buzzer và LED đỏ bật ngay tại thiết bị; một lần giữ nút chỉ tạo một
+sự kiện. Nhả nút rồi giữ lại từ 600 ms đến dưới 3 giây và nhả để tắt âm/đèn
+tại chỗ. Thao tác này không hủy bản ghi hay thông báo Telegram. Khi
+`FALL_DETECTED`, nút vẫn dùng luồng CANCEL cũ (guard 2 giây, giữ ít nhất
+600 ms rồi nhả); SOS không chạy trong các trạng thái phát hiện té trung gian.
+
+Firmware gửi `request_id` UUID ổn định qua hàng đợi cloud, không gọi HTTPS
+trong vòng lặp cảm biến. Migration `009_manual_sos.sql` thêm `event_type`
+`FALL`/`SOS` vào `fall_events`; SOS là `CONFIRMED` với thời gian máy chủ và
+được chống trùng bằng `(device_id, sos_request_key)`. Edge Function
+`create-sos-event` xác thực `X-Device-Code` và `X-Device-Key`, gửi Telegram
+với nút ACK hiện có. Flutter chỉ hiển thị SOS sau khi đọc bản ghi Supabase
+cho người chăm sóc đã đăng nhập; lịch sử được làm mới định kỳ 8 giây.
+
+Sau khi build, **cần flash firmware mới lên ESP32-C3**. Kiểm thử vật lý:
+
+1. Đăng nhập dashboard, kiểm tra thiết bị ở `NORMAL` và trực tuyến.
+2. Nhấn ngắn hoặc giữ 2,5 giây: không có SOS.
+3. Giữ liên tục ít nhất 3 giây: log `MANUAL_SOS_TRIGGERED`, buzzer/LED bật;
+   giữ thêm 5 giây không tạo sự kiện thứ hai.
+4. Kiểm tra Telegram có nội dung 🆘 và nút `✅ Đã nhận cảnh báo`; dashboard
+   hiện banner SOS và history/detail có UUID, thời gian máy chủ, không có
+   chỉ số té ngã. Đợi tối đa một chu kỳ refresh 8 giây.
+5. Nhả, giữ 600–2500 ms rồi nhả: buzzer/LED tắt; SOS vẫn `CONFIRMED`.
+6. Bấm ACK Telegram: `acknowledged_at` và `acknowledged_via=TELEGRAM` xuất
+   hiện sau khi làm mới dashboard. Bấm ACK lại không đổi thời gian xác nhận.
+7. Nhả và giữ 3 giây lần nữa: tạo SOS mới với UUID khác. Có thể tắt Wi-Fi
+   tạm thời để kiểm tra retry dùng cùng mã sự kiện khi kết nối trở lại.
+8. Thử FALL thực tế: CANCEL vẫn yêu cầu guard 2 giây, giữ ít nhất 600 ms
+   rồi nhả, và không phát sinh SOS từ lần giữ nút đó.

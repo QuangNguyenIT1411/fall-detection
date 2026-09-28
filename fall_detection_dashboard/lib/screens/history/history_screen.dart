@@ -33,7 +33,7 @@ class HistoryScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Lịch sử té ngã',
+                            'Lịch sử cảnh báo',
                             style: TextStyle(
                               color: AppColors.navy,
                               fontSize: 28,
@@ -141,10 +141,21 @@ class _EventTile extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.red.withValues(alpha: 0.1),
+                  color:
+                      (event.eventType == FallEventType.sos
+                              ? AppColors.amber
+                              : AppColors.red)
+                          .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(Icons.warning_rounded, color: AppColors.red),
+                child: Icon(
+                  event.eventType == FallEventType.sos
+                      ? Icons.sos_rounded
+                      : Icons.warning_rounded,
+                  color: event.eventType == FallEventType.sos
+                      ? AppColors.amber
+                      : AppColors.red,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -173,6 +184,14 @@ class _EventTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                     ],
+                    if (event.eventType == FallEventType.sos)
+                      const Text(
+                        '🆘 SOS',
+                        style: TextStyle(
+                          color: AppColors.red,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     Text(
                       deviceLabel,
                       maxLines: 1,
@@ -208,16 +227,17 @@ class _EventTile extends StatelessWidget {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                          Text(
-                            '${event.peakAcc?.toStringAsFixed(2) ?? '—'} g • '
-                            '${event.peakGyro?.toStringAsFixed(1) ?? '—'} dps • '
-                            '${event.finalPose?.toStringAsFixed(1) ?? '—'}°',
-                            style: const TextStyle(
-                              color: AppColors.muted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                          if (event.eventType == FallEventType.fall)
+                            Text(
+                              '${event.peakAcc?.toStringAsFixed(2) ?? '—'} g • '
+                              '${event.peakGyro?.toStringAsFixed(1) ?? '—'} dps • '
+                              '${event.finalPose?.toStringAsFixed(1) ?? '—'}°',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ],
@@ -225,16 +245,18 @@ class _EventTile extends StatelessWidget {
                 ),
               ),
               if (width >= 700) ...[
-                Text(
-                  '${event.peakAcc?.toStringAsFixed(2) ?? '—'} g  •  '
-                  '${event.peakGyro?.toStringAsFixed(1) ?? '—'} dps  •  '
-                  '${event.finalPose?.toStringAsFixed(1) ?? '—'}°',
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w600,
+                if (event.eventType == FallEventType.fall)
+                  Text(
+                    '${event.peakAcc?.toStringAsFixed(2) ?? '—'} g  •  '
+                    '${event.peakGyro?.toStringAsFixed(1) ?? '—'} dps  •  '
+                    '${event.finalPose?.toStringAsFixed(1) ?? '—'}°',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 18),
+                if (event.eventType == FallEventType.fall)
+                  const SizedBox(width: 18),
                 EventStatusBadge(status: event.status),
                 if (event.acknowledgedAt != null) ...[
                   const SizedBox(width: 10),
@@ -279,7 +301,7 @@ class _EmptyHistory extends StatelessWidget {
                 ),
                 SizedBox(height: 16),
                 Text(
-                  'Chưa có sự kiện té ngã.',
+                  'Chưa có sự kiện cảnh báo.',
                   style: TextStyle(
                     color: AppColors.navy,
                     fontSize: 18,

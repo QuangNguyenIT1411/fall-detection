@@ -4,10 +4,12 @@ idf_component_register(
         "wifi_manager.c"
         "mqtt_manager.c"
         "cloud_event_service.c"
+        "manual_sos.c"
     INCLUDE_DIRS "."
     REQUIRES
         driver
         esp_timer
+        esp_hw_support
         esp_wifi
         esp_event
         esp_netif

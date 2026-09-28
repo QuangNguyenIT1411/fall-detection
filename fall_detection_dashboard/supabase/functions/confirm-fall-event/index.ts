@@ -40,13 +40,16 @@ export async function handleConfirmFallEvent(
 
   const { data: event, error: lookupError } = await auth.supabase
     .from("fall_events")
-    .select("id, status, confirmed_at, notification_sent_at, notification_eligible, peak_acc, peak_gyro, final_pose, low_g_duration_ms, low_g_to_impact_ms")
+    .select("id, event_type, status, confirmed_at, notification_sent_at, notification_eligible, peak_acc, peak_gyro, final_pose, low_g_duration_ms, low_g_to_impact_ms")
     .eq("id", eventId).eq("device_id", auth.deviceId).maybeSingle();
   if (lookupError) {
     console.error("Fall event lookup failed");
     return jsonResponse({ success: false, error: "Server error" }, 500);
   }
   if (!event) return jsonResponse({ success: false, error: "Event not found" }, 404);
+  if (event.event_type === "SOS") {
+    return jsonResponse({ success: false, error: "Not a fall event" }, 409);
+  }
   if (event.status === "CANCELLED") {
     return jsonResponse({ success: false, error: "Cancelled event cannot be confirmed", status: event.status }, 409);
   }

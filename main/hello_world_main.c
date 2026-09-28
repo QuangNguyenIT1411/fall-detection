@@ -10,10 +10,12 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include "nvs_flash.h"
 
 #include "app_config.h"
 #include "cloud_event_service.h"
+#include "manual_sos.h"
 #include "mqtt_manager.h"
 #include "wifi_manager.h"
 
@@ -159,6 +161,12 @@ static int64_t fall_confirm_next_enqueue_ms = 0;
 static bool fall_confirm_enqueued = false;
 static bool fall_confirm_deadline_logged = false;
 
+#define SOS_PENDING_CAPACITY 32
+static manual_sos_t manual_sos;
+static char pending_sos_keys[SOS_PENDING_CAPACITY][37];
+static unsigned int pending_sos_head = 0;
+static unsigned int pending_sos_count = 0;
+
 // =====================================================
 // TIME
 // =====================================================
@@ -289,7 +297,7 @@ static void alert_outputs_init(void)
 static void update_alert_outputs(void)
 {
     static bool last_alarm_on = false;
-    bool alarm_on = (fall_state == STATE_FALL_DETECTED);
+    bool alarm_on = (fall_state == STATE_FALL_DETECTED) || manual_sos.active;
 
     gpio_set_level(BUZZER_GPIO, alarm_on ? 1 : 0);
     gpio_set_level(LED_RED_GPIO, alarm_on ? 1 : 0);
@@ -302,6 +310,54 @@ static void update_alert_outputs(void)
             ESP_LOGI(TAG, "Canh bao da tat: LED DO + BUZZER TAT");
 
         last_alarm_on = alarm_on;
+    }
+}
+
+static void generate_sos_key(char key[37])
+{
+    uint8_t bytes[16];
+    esp_fill_random(bytes, sizeof(bytes));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    snprintf(key, 37,
+             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
+             "%02x%02x%02x%02x%02x%02x",
+             bytes[0], bytes[1], bytes[2], bytes[3],
+             bytes[4], bytes[5], bytes[6], bytes[7],
+             bytes[8], bytes[9], bytes[10], bytes[11],
+             bytes[12], bytes[13], bytes[14], bytes[15]);
+}
+
+static void process_manual_sos_button(void)
+{
+    const int64_t now_ms = millis_now();
+    manual_sos_result_t result = manual_sos_update(
+        &manual_sos, fall_state == STATE_NORMAL,
+        gpio_get_level(CANCEL_BUTTON_GPIO) == 1, now_ms);
+
+    if (result.triggered)
+    {
+        ESP_LOGE(TAG, "MANUAL_SOS_TRIGGERED");
+        if (pending_sos_count < SOS_PENDING_CAPACITY)
+        {
+            unsigned int tail = (pending_sos_head + pending_sos_count) %
+                                SOS_PENDING_CAPACITY;
+            generate_sos_key(pending_sos_keys[tail]);
+            pending_sos_count++;
+        }
+        else
+        {
+            ESP_LOGE(TAG, "SOS pending buffer full; cloud action unavailable");
+        }
+    }
+    if (result.silenced)
+        ESP_LOGI(TAG, "MANUAL_SOS_SILENCED (cloud event unchanged)");
+
+    if (pending_sos_count > 0 &&
+        cloud_event_enqueue_sos(pending_sos_keys[pending_sos_head]))
+    {
+        pending_sos_head = (pending_sos_head + 1) % SOS_PENDING_CAPACITY;
+        pending_sos_count--;
     }
 }
 
@@ -514,6 +570,7 @@ static bool cancel_button_click_event(void)
 // confirmation deadline must not depend on continued sensor I/O.
 static void process_latched_fall_controls(void)
 {
+    process_manual_sos_button();
     if (cancel_button_click_event())
     {
         if (fall_state == STATE_FALL_DETECTED)
@@ -1079,6 +1136,7 @@ void app_main(void)
     // 0. ALERT OUTPUTS + CANCEL BUTTON
     alert_outputs_init();
     cancel_button_init();
+    manual_sos_init(&manual_sos);
 
     // 0b. NETWORKING (event-driven, khong cho ket noi trong app_main)
     esp_err_t nvs_err = nvs_flash_init();

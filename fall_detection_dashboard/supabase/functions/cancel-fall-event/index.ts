@@ -30,7 +30,7 @@ export default {
 
     const { data: event, error: lookupError } = await auth.supabase
       .from("fall_events")
-      .select("id, status")
+      .select("id, event_type, status")
       .eq("id", eventId)
       .eq("device_id", auth.deviceId)
       .maybeSingle();
@@ -42,6 +42,10 @@ export default {
 
     if (!event) {
       return jsonResponse({ success: false, error: "Event not found" }, 404);
+    }
+
+    if (event.event_type === "SOS") {
+      return jsonResponse({ success: false, error: "Not a fall event" }, 409);
     }
 
     if (event.status === "CANCELLED") {
