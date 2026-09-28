@@ -247,6 +247,34 @@ class EventDetailScreen extends StatelessWidget {
                                                 .toLocal(),
                                           ),
                                     ),
+                                  if (currentEvent.emergencyCallStatus ==
+                                          EmergencyCallStatus.requested ||
+                                      currentEvent.emergencyCallStatus ==
+                                          EmergencyCallStatus.accepted)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Cuộc gọi khẩn cấp',
+                                      value: '☎ Đã thực hiện cuộc gọi khẩn cấp',
+                                    ),
+                                  if (currentEvent.emergencyCallStatus ==
+                                      EmergencyCallStatus.failed)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Cuộc gọi khẩn cấp',
+                                      value: '⚠️ Không thể thực hiện cuộc gọi khẩn cấp',
+                                    ),
+                                  if (currentEvent.emergencyCallRequestedAt !=
+                                      null)
+                                    _DetailItem(
+                                      width: itemWidth,
+                                      label: 'Thời gian yêu cầu gọi',
+                                      value: DateFormat('dd/MM/yyyy HH:mm:ss')
+                                          .format(
+                                            currentEvent
+                                                .emergencyCallRequestedAt!
+                                                .toLocal(),
+                                          ),
+                                    ),
                                   if (currentEvent.status ==
                                       FallEventStatus.confirmed)
                                     _DetailItem(

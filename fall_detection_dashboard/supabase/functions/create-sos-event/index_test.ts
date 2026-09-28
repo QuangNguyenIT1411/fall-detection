@@ -158,3 +158,26 @@ Deno.test("SOS Telegram has dedicated copy and existing ACK callback; presence h
       `${kind} incorrectly got SOS formatting`);
   }
 });
+
+Deno.test("SOS Telegram failure still attempts voice, voice failure still delivers Telegram", async () => {
+  const f = new Fixture();
+  f.failSend = true;
+  let voiceCalls = 0;
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const first = await handleCreateSosEvent(f.request(), {
+      authenticate: f.authenticate, notify: f.notify,
+      voice: async () => { voiceCalls++; return { state: "accepted", sid: `CA${"b".repeat(32)}` }; },
+    });
+    assert(first.status === 503 && voiceCalls === 1 && f.events.size === 1,
+      "Telegram failure blocked SOS call");
+    f.failSend = false;
+    const second = await handleCreateSosEvent(f.request(), {
+      authenticate: f.authenticate, notify: f.notify,
+      voice: async () => ({ state: "failed", error: "AUTH_ERROR", retryable: false }),
+    });
+    assert(second.status === 201 && f.events.size === 1 && f.sends === 2,
+      "Voice failure blocked SOS Telegram");
+  } finally { console.error = original; }
+});

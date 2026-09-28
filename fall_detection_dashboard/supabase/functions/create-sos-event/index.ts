@@ -7,12 +7,14 @@ import {
   sendSosNotification,
   type SosNotification,
 } from "../_shared/telegram.ts";
+import { attemptEmergencyVoice, type VoiceResult } from "../_shared/emergency_voice.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type Dependencies = {
   authenticate?: (request: Request) => Promise<DeviceAuthResult>;
   notify?: typeof sendSosNotification;
+  voice?: typeof attemptEmergencyVoice;
 };
 
 export async function handleCreateSosEvent(
@@ -58,8 +60,24 @@ export async function handleCreateSosEvent(
     confirmed_at: event.confirmed_at,
     notification_sent_at: sentAt,
   });
+  const voicePromise: Promise<VoiceResult> = (dependencies.voice ??
+    attemptEmergencyVoice)(auth.supabase, event.id, auth.deviceId, "SOS")
+    .catch(() => {
+      console.error("Emergency voice execution failed");
+      return { state: "database_error" as const };
+    });
+  const finish = async (body: Record<string, unknown>, status: number) => {
+    const voice = await voicePromise;
+    const needsRetry = voice.state === "database_error" ||
+      voice.state === "in_progress" ||
+      (voice.state === "failed" && voice.retryable);
+    return jsonResponse({ ...body,
+      emergency_call_status: voice.state === "accepted" || voice.state === "already_accepted"
+        ? "ACCEPTED" : voice.state === "failed" ? "FAILED" : null,
+    }, (status === 200 || status === 201) && needsRetry ? 503 : status);
+  };
   if (event.notification_sent_at) {
-    return jsonResponse(response(event.notification_sent_at), 200);
+    return finish(response(event.notification_sent_at), 200);
   }
 
   const claimToken = crypto.randomUUID();
@@ -73,16 +91,16 @@ export async function handleCreateSosEvent(
   );
   if (claimError) {
     console.error("SOS notification claim failed");
-    return jsonResponse({ success: false, error: "Notification claim failed" }, 503);
+    return finish({ success: false, error: "Notification claim failed" }, 503);
   }
   if (!claimed) {
     const { data: latest } = await auth.supabase.from("fall_events")
       .select("notification_sent_at").eq("id", event.id)
       .eq("device_id", auth.deviceId).maybeSingle();
     if (latest?.notification_sent_at) {
-      return jsonResponse(response(latest.notification_sent_at), 200);
+      return finish(response(latest.notification_sent_at), 200);
     }
-    return jsonResponse({ success: false, error: "Notification in progress" }, 503);
+    return finish({ success: false, error: "Notification in progress" }, 503);
   }
 
   const { data: device, error: deviceError } = await auth.supabase.from("devices")
@@ -90,7 +108,7 @@ export async function handleCreateSosEvent(
   if (deviceError || !device) {
     await auth.supabase.rpc("release_fall_notification_claim", claimArgs);
     console.error("SOS device lookup failed");
-    return jsonResponse({ success: false, error: "Notification data unavailable" }, 503);
+    return finish({ success: false, error: "Notification data unavailable" }, 503);
   }
 
   const notification: SosNotification = {
@@ -103,7 +121,7 @@ export async function handleCreateSosEvent(
   if (!sent.ok) {
     await auth.supabase.rpc("release_fall_notification_claim", claimArgs);
     console.error(`SOS Telegram delivery failed for event ${event.id}: ${sent.error}`);
-    return jsonResponse({ success: false, error: "Telegram notification failed" }, 503);
+    return finish({ success: false, error: "Telegram notification failed" }, 503);
   }
 
   const { data: sentAt, error: markError } = await auth.supabase.rpc(
@@ -111,9 +129,9 @@ export async function handleCreateSosEvent(
   );
   if (markError || !sentAt) {
     console.error("SOS notification status update failed");
-    return jsonResponse({ success: false, error: "Notification status update failed" }, 503);
+    return finish({ success: false, error: "Notification status update failed" }, 503);
   }
-  return jsonResponse(response(sentAt), 201);
+  return finish(response(sentAt), 201);
 }
 
 export default { fetch: handleCreateSosEvent };

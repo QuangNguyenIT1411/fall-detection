@@ -219,3 +219,39 @@ Deno.test("device offline/recovery Telegram never has fall ACK button", async ()
     assert(result.ok && sentBody.reply_markup === undefined, `${kind} has ACK button`);
   }
 });
+
+Deno.test("Telegram failure does not prevent a confirmed FALL voice call", async () => {
+  const f = fixture("DETECTED");
+  let calls = 0;
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const response = await handleConfirmFallEvent(f.request(), {
+      authenticate: f.authenticate,
+      notify: async () => ({ ok: false, error: "transport_error" }),
+      voice: async () => { calls++; return { state: "accepted", sid: `CA${"b".repeat(32)}` }; },
+    });
+    assert(response.status === 503 && f.event.status === "CONFIRMED" && calls === 1,
+      "Telegram failure blocked voice");
+  } finally { console.error = original; }
+});
+
+Deno.test("voice failure does not prevent FALL Telegram or resend it on retry", async () => {
+  const f = fixture("DETECTED");
+  let calls = 0;
+  const voice = async () => {
+    calls++;
+    return calls === 1
+      ? { state: "failed" as const, error: "AUTH_ERROR" as const, retryable: false }
+      : { state: "failed" as const, error: "AUTH_ERROR" as const, retryable: false };
+  };
+  const first = await handleConfirmFallEvent(f.request(), {
+    authenticate: f.authenticate, notify: async () => ({ ok: true }), voice,
+  });
+  const second = await handleConfirmFallEvent(f.request(), {
+    authenticate: f.authenticate, notify: async () => { throw new Error("Duplicate Telegram"); }, voice,
+  });
+  assert(first.status === 200 && second.status === 200 &&
+    f.event.notification_sent_at !== null && calls === 2,
+    "Voice failure blocked Telegram or retry failed");
+});

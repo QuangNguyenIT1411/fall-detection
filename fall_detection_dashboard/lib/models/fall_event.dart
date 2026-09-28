@@ -28,6 +28,22 @@ enum FallEventStatus {
   }
 }
 
+enum EmergencyCallStatus {
+  requested('REQUESTED'),
+  accepted('ACCEPTED'),
+  failed('FAILED');
+
+  const EmergencyCallStatus(this.databaseValue);
+  final String databaseValue;
+
+  static EmergencyCallStatus? fromDatabase(Object? value) {
+    for (final status in values) {
+      if (status.databaseValue == value) return status;
+    }
+    return null;
+  }
+}
+
 class FallEvent {
   const FallEvent({
     required this.id,
@@ -46,6 +62,9 @@ class FallEvent {
     this.notificationSentAt,
     this.acknowledgedAt,
     this.acknowledgedVia,
+    this.emergencyCallRequestedAt,
+    this.emergencyCallSid,
+    this.emergencyCallStatus,
     this.device,
     this.isLocalRealtime = false,
   });
@@ -65,6 +84,9 @@ class FallEvent {
   final DateTime? notificationSentAt;
   final DateTime? acknowledgedAt;
   final String? acknowledgedVia;
+  final DateTime? emergencyCallRequestedAt;
+  final String? emergencyCallSid;
+  final EmergencyCallStatus? emergencyCallStatus;
   final DateTime createdAt;
   final Device? device;
   final bool isLocalRealtime;
@@ -87,6 +109,13 @@ class FallEvent {
       notificationSentAt: _parseNullableDate(json['notification_sent_at']),
       acknowledgedAt: _parseNullableDate(json['acknowledged_at']),
       acknowledgedVia: json['acknowledged_via'] as String?,
+      emergencyCallRequestedAt: _parseNullableDate(
+        json['emergency_call_requested_at'],
+      ),
+      emergencyCallSid: json['emergency_call_sid'] as String?,
+      emergencyCallStatus: EmergencyCallStatus.fromDatabase(
+        json['emergency_call_status'],
+      ),
       createdAt: DateTime.parse(json['created_at'] as String),
       device: deviceJson is Map<String, dynamic>
           ? Device.fromJson(deviceJson)
@@ -113,6 +142,11 @@ class FallEvent {
     'notification_sent_at': notificationSentAt?.toUtc().toIso8601String(),
     'acknowledged_at': acknowledgedAt?.toUtc().toIso8601String(),
     'acknowledged_via': acknowledgedVia,
+    'emergency_call_requested_at': emergencyCallRequestedAt
+        ?.toUtc()
+        .toIso8601String(),
+    'emergency_call_sid': emergencyCallSid,
+    'emergency_call_status': emergencyCallStatus?.databaseValue,
     'created_at': createdAt.toUtc().toIso8601String(),
   };
 

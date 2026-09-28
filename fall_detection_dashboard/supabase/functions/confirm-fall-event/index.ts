@@ -7,12 +7,14 @@ import {
   sendFallConfirmedNotification,
   type ConfirmedFallNotification,
 } from "../_shared/telegram.ts";
+import { attemptEmergencyVoice, type VoiceResult } from "../_shared/emergency_voice.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type Dependencies = {
   authenticate?: (request: Request) => Promise<DeviceAuthResult>;
   notify?: typeof sendFallConfirmedNotification;
+  voice?: typeof attemptEmergencyVoice;
 };
 
 export async function handleConfirmFallEvent(
@@ -73,15 +75,35 @@ export async function handleConfirmFallEvent(
     return jsonResponse({ success: false, error: "Invalid event status" }, 409);
   }
 
+  // Start both independent channels after the authoritative transition.
+  // Legacy events are not notified retrospectively when this feature deploys.
+  const voicePromise: Promise<VoiceResult> = event.notification_eligible
+    ? (dependencies.voice ?? attemptEmergencyVoice)(auth.supabase, eventId,
+      auth.deviceId, "FALL").catch(() => {
+        console.error("Emergency voice execution failed");
+        return { state: "database_error" as const };
+      })
+    : Promise.resolve({ state: "disabled" });
+  const finish = async (body: Record<string, unknown>, status: number) => {
+    const voice = await voicePromise;
+    const needsRetry = voice.state === "database_error" ||
+      voice.state === "in_progress" ||
+      (voice.state === "failed" && voice.retryable);
+    return jsonResponse({ ...body,
+      emergency_call_status: voice.state === "accepted" || voice.state === "already_accepted"
+        ? "ACCEPTED" : voice.state === "failed" ? "FAILED" : null,
+    }, status === 200 && needsRetry ? 503 : status);
+  };
+
   if (event.notification_sent_at) {
-    return jsonResponse({
+    return finish({
       success: true, event_id: eventId, status: "CONFIRMED", confirmed_at: confirmedAt,
       notification_sent_at: event.notification_sent_at, idempotent,
     }, 200);
   }
 
   if (!event.notification_eligible) {
-    return jsonResponse({
+    return finish({
       success: true, event_id: eventId, status: "CONFIRMED", confirmed_at: confirmedAt,
       notification_sent_at: null, idempotent: true,
       notification_skipped: "pre_phase_7_event",
@@ -93,18 +115,18 @@ export async function handleConfirmFallEvent(
   const { data: claimed, error: claimError } = await auth.supabase.rpc("claim_fall_notification", claimArgs);
   if (claimError) {
     console.error(`Telegram notification claim failed for event ${eventId}`);
-    return jsonResponse({ success: false, error: "Notification claim failed", status: "CONFIRMED" }, 503);
+    return finish({ success: false, error: "Notification claim failed", status: "CONFIRMED" }, 503);
   }
   if (!claimed) {
     const { data: latest, error } = await auth.supabase.from("fall_events")
       .select("notification_sent_at").eq("id", eventId).eq("device_id", auth.deviceId).maybeSingle();
     if (!error && latest?.notification_sent_at) {
-      return jsonResponse({
+      return finish({
         success: true, event_id: eventId, status: "CONFIRMED", confirmed_at: confirmedAt,
         notification_sent_at: latest.notification_sent_at, idempotent: true,
       }, 200);
     }
-    return jsonResponse({ success: false, error: "Notification in progress", status: "CONFIRMED" }, 503);
+    return finish({ success: false, error: "Notification in progress", status: "CONFIRMED" }, 503);
   }
 
   const { data: device, error: deviceError } = await auth.supabase.from("devices")
@@ -112,7 +134,7 @@ export async function handleConfirmFallEvent(
   if (deviceError || !device) {
     await auth.supabase.rpc("release_fall_notification_claim", claimArgs);
     console.error(`Telegram notification device lookup failed for event ${eventId}`);
-    return jsonResponse({ success: false, error: "Notification data unavailable", status: "CONFIRMED" }, 503);
+    return finish({ success: false, error: "Notification data unavailable", status: "CONFIRMED" }, 503);
   }
 
   const notification: ConfirmedFallNotification = {
@@ -125,16 +147,16 @@ export async function handleConfirmFallEvent(
   if (!sent.ok) {
     await auth.supabase.rpc("release_fall_notification_claim", claimArgs);
     console.error(`Telegram notification failed for event ${eventId}: ${sent.error}`);
-    return jsonResponse({ success: false, error: "Telegram notification failed", status: "CONFIRMED" }, 503);
+    return finish({ success: false, error: "Telegram notification failed", status: "CONFIRMED" }, 503);
   }
 
   const { data: notificationSentAt, error: markError } = await auth.supabase.rpc("mark_fall_notification_sent", claimArgs);
   if (markError || !notificationSentAt) {
     console.error(`Telegram notification status update failed for event ${eventId}`);
-    return jsonResponse({ success: false, error: "Notification status update failed", status: "CONFIRMED" }, 503);
+    return finish({ success: false, error: "Notification status update failed", status: "CONFIRMED" }, 503);
   }
   console.info(`Telegram notification sent for event ${eventId}`);
-  return jsonResponse({
+  return finish({
     success: true, event_id: eventId, status: "CONFIRMED", confirmed_at: confirmedAt,
     notification_sent_at: notificationSentAt, idempotent,
   }, 200);
