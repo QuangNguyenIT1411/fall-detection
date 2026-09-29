@@ -45,11 +45,17 @@ export async function handleDeviceHeartbeat(
       dependencies.notify,
     );
   }
+  const { data: config, error: configError } = await auth.supabase.from("devices")
+    .select("buzzer_enabled").eq("id", auth.deviceId).maybeSingle();
+  if (configError || typeof config?.buzzer_enabled !== "boolean") {
+    return jsonResponse({ success: false, error: "Device configuration unavailable" }, 500);
+  }
   return jsonResponse({
     success: true,
     device_id: auth.deviceId,
     status: "ONLINE",
     last_seen_at: presence.last_seen_at,
+    buzzer_enabled: config.buzzer_enabled,
   }, 200);
 }
 

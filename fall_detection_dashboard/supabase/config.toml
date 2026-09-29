@@ -28,3 +28,8 @@ verify_jwt = false
 
 [functions.check-emergency-calls]
 verify_jwt = false
+
+# getUser() validates caregiver JWTs in the handler (including asymmetric JWTs).
+# OPTIONS preflight is public; all writes require a non-anonymous user session.
+[functions.set-buzzer-enabled]
+verify_jwt = false

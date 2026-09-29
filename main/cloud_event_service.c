@@ -5,6 +5,7 @@
 
 #include "app_config.h"
 #include "cJSON.h"
+#include "buzzer_output.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -346,6 +347,8 @@ static bool submit_heartbeat(void)
     cJSON *root = cJSON_Parse(response.data);
     cJSON *success = root ? cJSON_GetObjectItemCaseSensitive(root, "success") : NULL;
     bool valid = cJSON_IsTrue(success);
+    if (valid)
+        buzzer_output_apply_heartbeat(root);
     cJSON_Delete(root);
     if (!valid)
         ESP_LOGW(TAG, "Heartbeat response invalid");

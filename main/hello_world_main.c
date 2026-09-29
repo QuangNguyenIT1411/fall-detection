@@ -16,6 +16,7 @@
 #include "app_config.h"
 #include "cloud_event_service.h"
 #include "manual_sos.h"
+#include "buzzer_output.h"
 #include "mqtt_manager.h"
 #include "wifi_manager.h"
 
@@ -288,7 +289,7 @@ static void alert_outputs_init(void)
 
     ESP_ERROR_CHECK(gpio_config(&io_conf));
 
-    gpio_set_level(BUZZER_GPIO, 0);
+    buzzer_output_set_alarm(false);
     gpio_set_level(LED_RED_GPIO, 0);
 
     ESP_LOGI(TAG, "Alert outputs ready: BUZZER=GPIO4, LED_RED=GPIO5");
@@ -299,13 +300,13 @@ static void update_alert_outputs(void)
     static bool last_alarm_on = false;
     bool alarm_on = (fall_state == STATE_FALL_DETECTED) || manual_sos.active;
 
-    gpio_set_level(BUZZER_GPIO, alarm_on ? 1 : 0);
+    buzzer_output_set_alarm(alarm_on);
     gpio_set_level(LED_RED_GPIO, alarm_on ? 1 : 0);
 
     if (alarm_on != last_alarm_on)
     {
         if (alarm_on)
-            ESP_LOGE(TAG, "CANH BAO: LED DO + BUZZER BAT");
+            ESP_LOGE(TAG, "CANH BAO: LED DO BAT, BUZZER THEO CAU HINH");
         else
             ESP_LOGI(TAG, "Canh bao da tat: LED DO + BUZZER TAT");
 

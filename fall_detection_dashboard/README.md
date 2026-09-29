@@ -2,7 +2,8 @@
 
 Flutter Web Dashboard cho đồ án **Hệ thống phát hiện té ngã cho người cao tuổi sử dụng ESP32-C3 + MPU6500**.
 
-> Trạng thái: **Phase 11 – caregiver login qua Supabase Auth**.
+> Phase 13.2: [Điều khiển còi vật lý từ dashboard](supabase/PHASE13_2_SETUP.md).
+> Tắt còi chỉ tắt GPIO4; FALL/SOS, Telegram và cuộc gọi vẫn là thật. Firmware mới cần được flash thủ công.
 
 ## Phase 11: quyền truy cập dashboard
 

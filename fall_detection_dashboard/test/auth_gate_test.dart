@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'helpers/fake_buzzer_repository.dart';
+
 class _Auth implements AuthService {
   _Auth([this.user]);
   CaregiverIdentity? user;
@@ -104,6 +106,35 @@ class _Telemetry implements TelemetryDataSource {
 
 void main() {
   const caregiver = CaregiverIdentity('caregiver-1', 'caregiver@example.com');
+
+  testWidgets('buzzer control is only mounted inside authenticated dashboard', (
+    tester,
+  ) async {
+    final auth = _Auth();
+    final buzzer = FakeBuzzerRepository()..enabled = false;
+    await tester.pumpWidget(
+      AuthGate(
+        auth: auth,
+        repository: _Repository(),
+        buzzerRepository: buzzer,
+        telemetrySourceFactory: _Telemetry.new,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('buzzer-switch')), findsNothing);
+    expect(buzzer.reads, 0);
+    auth.user = caregiver;
+    auth.controller.add(caregiver);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('buzzer-switch')), findsOneWidget);
+    expect(find.byKey(const Key('buzzer-disabled-warning')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('logout-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('buzzer-switch')), findsNothing);
+    expect(buzzer.writes, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+    auth.close();
+  });
 
   testWidgets(
     'unauthenticated deep link shows login without loading data or MQTT',

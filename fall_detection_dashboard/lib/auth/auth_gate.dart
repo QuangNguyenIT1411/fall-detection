@@ -7,6 +7,8 @@ import '../app.dart';
 import '../core/theme/app_theme.dart';
 import '../providers/fall_event_provider.dart';
 import '../providers/telemetry_provider.dart';
+import '../providers/buzzer_control_provider.dart';
+import '../services/buzzer_control_repository.dart';
 import '../services/fall_event_repository.dart';
 import '../services/telemetry_data_source.dart';
 import 'auth_service.dart';
@@ -19,12 +21,14 @@ class AuthGate extends StatefulWidget {
     required this.repository,
     required this.telemetrySourceFactory,
     this.initialRoute,
+    this.buzzerRepository,
   });
 
   final AuthService auth;
   final FallEventRepository repository;
   final TelemetryDataSource Function() telemetrySourceFactory;
   final String? initialRoute;
+  final BuzzerControlRepository? buzzerRepository;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -100,6 +104,11 @@ class _AuthGateState extends State<AuthGate> {
       key: ValueKey('${user.id}-$_authRevision'),
       child: MultiProvider(
         providers: [
+          if (widget.buzzerRepository != null)
+            ChangeNotifierProvider<BuzzerControlProvider>(
+              create: (_) =>
+                  BuzzerControlProvider(widget.buzzerRepository!)..start(),
+            ),
           ChangeNotifierProvider<FallEventProvider>(
             create: (_) => FallEventProvider(widget.repository)
               ..loadEvents()

@@ -69,10 +69,12 @@ Future<void> main() async {
     return;
   }
   final client = Supabase.instance.client;
+  final repository = SupabaseService(client);
   runApp(
     AuthGate(
       auth: SupabaseAuthService(client),
-      repository: SupabaseService(client),
+      repository: repository,
+      buzzerRepository: repository,
       telemetrySourceFactory: () => createTelemetrySource(mqttConfig),
     ),
   );

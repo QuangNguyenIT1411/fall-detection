@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/device.dart';
 import '../models/fall_event.dart';
 import 'fall_event_repository.dart';
+import 'buzzer_control_repository.dart';
 
 class DatabaseReadException implements Exception {
   const DatabaseReadException(this.message, this.cause);
@@ -14,10 +15,34 @@ class DatabaseReadException implements Exception {
   String toString() => message;
 }
 
-class SupabaseService implements FallEventRepository {
+class SupabaseService implements FallEventRepository, BuzzerControlRepository {
   const SupabaseService(this._client);
 
   final SupabaseClient _client;
+
+  @override
+  Future<BuzzerSetting> setBuzzerEnabled(bool enabled) async {
+    // Supabase attaches the signed-in caregiver access token, never MQTT auth.
+    if (_client.auth.currentSession == null) {
+      throw StateError('Vui lòng đăng nhập lại.');
+    }
+    final response = await _client.functions.invoke(
+      'set-buzzer-enabled',
+      body: {'enabled': enabled},
+    );
+    final data = response.data;
+    if (response.status != 200 ||
+        data is! Map ||
+        data['success'] != true ||
+        data['buzzer_enabled'] is! bool ||
+        data['updated_at'] is! String) {
+      throw StateError('Không thể lưu cấu hình còi.');
+    }
+    return BuzzerSetting(
+      data['buzzer_enabled'] as bool,
+      DateTime.parse(data['updated_at'] as String),
+    );
+  }
 
   @override
   Future<List<Device>> getDevices() async {

@@ -5,6 +5,7 @@ idf_component_register(
         "mqtt_manager.c"
         "cloud_event_service.c"
         "manual_sos.c"
+        "buzzer_output.c"
     INCLUDE_DIRS "."
     REQUIRES
         driver

@@ -23,6 +23,8 @@ class Fixture {
   recoveryClaim: string | null = null;
   sent: string[] = [];
   failOffline = false;
+  buzzerEnabled = true;
+  configError = false;
 
   get client(): SupabaseClient {
     return this as unknown as SupabaseClient;
@@ -76,8 +78,9 @@ class Fixture {
           last_seen_at: this.lastSeen,
           offline_since: this.offlineSince,
           recovery_pending_at: this.recoveryPending,
+          buzzer_enabled: this.buzzerEnabled,
         },
-        error: null,
+        error: this.configError ? { message: "test read failure" } : null,
       }),
       then: (resolve: (value: unknown) => void) => {
         const stale = filters["lt:last_seen_at"] !== undefined;
@@ -165,6 +168,20 @@ function heartbeat(f: Fixture) {
     },
   );
 }
+
+Deno.test("authenticated heartbeat returns current buzzer setting without changing recovery semantics", async () => {
+  const f = new Fixture();
+  for (const enabled of [true, false, true]) {
+    f.buzzerEnabled = enabled;
+    const response = await heartbeat(f);
+    const body = await response.json();
+    assert(response.status === 200 && body.buzzer_enabled === enabled && body.success === true,
+      "Heartbeat omitted authoritative boolean");
+    assert(f.status === "ONLINE" && f.sent.length === 0, "Buzzer changed presence notification behavior");
+  }
+  f.configError = true;
+  assert((await heartbeat(f)).status === 500, "Configuration read failure must not invent a value");
+});
 
 function checker(f: Fixture) {
   Deno.env.set("SUPABASE_URL", "https://example.supabase.co");

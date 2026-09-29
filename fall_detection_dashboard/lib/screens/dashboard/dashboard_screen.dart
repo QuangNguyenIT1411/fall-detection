@@ -12,6 +12,8 @@ import '../../widgets/fall_alert.dart';
 import '../../widgets/metric_card.dart';
 import '../../widgets/state_badge.dart';
 import '../../widgets/sos_alert.dart';
+import '../../widgets/buzzer_control_card.dart';
+import '../../providers/buzzer_control_provider.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key, required this.onOpenEvent});
@@ -77,6 +79,10 @@ class DashboardScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 26),
                 _DeviceStatus(provider: provider),
+                if (context.watch<BuzzerControlProvider?>() != null) ...[
+                  const SizedBox(height: 14),
+                  const BuzzerControlCard(),
+                ],
                 const SizedBox(height: 22),
                 GridView.count(
                   crossAxisCount: columns,
