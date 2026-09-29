@@ -44,6 +44,24 @@ enum EmergencyCallStatus {
   }
 }
 
+enum EmergencyCallFinalStatus {
+  completed('COMPLETED'),
+  noAnswer('NO_ANSWER'),
+  busy('BUSY'),
+  failed('FAILED'),
+  canceled('CANCELED');
+
+  const EmergencyCallFinalStatus(this.databaseValue);
+  final String databaseValue;
+
+  static EmergencyCallFinalStatus? fromDatabase(Object? value) {
+    for (final status in values) {
+      if (status.databaseValue == value) return status;
+    }
+    return null;
+  }
+}
+
 class FallEvent {
   const FallEvent({
     required this.id,
@@ -65,6 +83,14 @@ class FallEvent {
     this.emergencyCallRequestedAt,
     this.emergencyCallSid,
     this.emergencyCallStatus,
+    this.emergencyCallFinalStatus,
+    this.emergencyCallInitiatedAt,
+    this.emergencyCallRingingAt,
+    this.emergencyCallAnsweredAt,
+    this.emergencyCallCompletedAt,
+    this.emergencyCallRetryCount = 0,
+    this.emergencyCallLastSid,
+    this.emergencyCallRetryAfter,
     this.device,
     this.isLocalRealtime = false,
   });
@@ -87,6 +113,14 @@ class FallEvent {
   final DateTime? emergencyCallRequestedAt;
   final String? emergencyCallSid;
   final EmergencyCallStatus? emergencyCallStatus;
+  final EmergencyCallFinalStatus? emergencyCallFinalStatus;
+  final DateTime? emergencyCallInitiatedAt;
+  final DateTime? emergencyCallRingingAt;
+  final DateTime? emergencyCallAnsweredAt;
+  final DateTime? emergencyCallCompletedAt;
+  final int emergencyCallRetryCount;
+  final String? emergencyCallLastSid;
+  final DateTime? emergencyCallRetryAfter;
   final DateTime createdAt;
   final Device? device;
   final bool isLocalRealtime;
@@ -115,6 +149,26 @@ class FallEvent {
       emergencyCallSid: json['emergency_call_sid'] as String?,
       emergencyCallStatus: EmergencyCallStatus.fromDatabase(
         json['emergency_call_status'],
+      ),
+      emergencyCallFinalStatus: EmergencyCallFinalStatus.fromDatabase(
+        json['emergency_call_final_status'],
+      ),
+      emergencyCallInitiatedAt: _parseNullableDate(
+        json['emergency_call_initiated_at'],
+      ),
+      emergencyCallRingingAt: _parseNullableDate(
+        json['emergency_call_ringing_at'],
+      ),
+      emergencyCallAnsweredAt: _parseNullableDate(
+        json['emergency_call_answered_at'],
+      ),
+      emergencyCallCompletedAt: _parseNullableDate(
+        json['emergency_call_completed_at'],
+      ),
+      emergencyCallRetryCount: _toInt(json['emergency_call_retry_count']) ?? 0,
+      emergencyCallLastSid: json['emergency_call_last_sid'] as String?,
+      emergencyCallRetryAfter: _parseNullableDate(
+        json['emergency_call_retry_after'],
       ),
       createdAt: DateTime.parse(json['created_at'] as String),
       device: deviceJson is Map<String, dynamic>
@@ -147,8 +201,56 @@ class FallEvent {
         .toIso8601String(),
     'emergency_call_sid': emergencyCallSid,
     'emergency_call_status': emergencyCallStatus?.databaseValue,
+    'emergency_call_final_status': emergencyCallFinalStatus?.databaseValue,
+    'emergency_call_initiated_at': emergencyCallInitiatedAt
+        ?.toUtc()
+        .toIso8601String(),
+    'emergency_call_ringing_at': emergencyCallRingingAt
+        ?.toUtc()
+        .toIso8601String(),
+    'emergency_call_answered_at': emergencyCallAnsweredAt
+        ?.toUtc()
+        .toIso8601String(),
+    'emergency_call_completed_at': emergencyCallCompletedAt
+        ?.toUtc()
+        .toIso8601String(),
+    'emergency_call_retry_count': emergencyCallRetryCount,
+    'emergency_call_last_sid': emergencyCallLastSid,
+    'emergency_call_retry_after': emergencyCallRetryAfter
+        ?.toUtc()
+        .toIso8601String(),
     'created_at': createdAt.toUtc().toIso8601String(),
   };
+
+  // API acceptance never implies that a phone rang or that someone answered.
+  // Final delivery wins over old progress timestamps for the current attempt.
+  String? get emergencyCallDisplay {
+    if (emergencyCallStatus == EmergencyCallStatus.requested) {
+      return '☎ Đang gửi yêu cầu gọi';
+    }
+    if (emergencyCallStatus == EmergencyCallStatus.failed) {
+      return '⚠️ Không thể thực hiện cuộc gọi khẩn cấp';
+    }
+    final finalMessage = switch (emergencyCallFinalStatus) {
+      EmergencyCallFinalStatus.completed => '✅ Cuộc gọi đã hoàn tất',
+      EmergencyCallFinalStatus.noAnswer => '⚠️ Không có người trả lời',
+      EmergencyCallFinalStatus.busy => '⚠️ Máy bận',
+      EmergencyCallFinalStatus.failed => '⚠️ Cuộc gọi thất bại',
+      EmergencyCallFinalStatus.canceled => 'Cuộc gọi đã bị hủy',
+      null => null,
+    };
+    if (finalMessage != null) return finalMessage;
+    if (emergencyCallAnsweredAt != null) return '✅ Cuộc gọi đã được kết nối';
+    if (emergencyCallRingingAt != null) return '☎ Điện thoại đang đổ chuông';
+    return emergencyCallStatus == EmergencyCallStatus.accepted
+        ? '☎ Đã gửi yêu cầu gọi'
+        : null;
+  }
+
+  bool get emergencyCallRetryPending =>
+      emergencyCallRetryAfter != null &&
+      emergencyCallRetryCount == 0 &&
+      emergencyCallAnsweredAt == null;
 
   int? confirmationSecondsRemaining(
     DateTime now, {

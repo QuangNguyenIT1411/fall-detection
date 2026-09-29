@@ -45,7 +45,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('☎ Đã thực hiện cuộc gọi khẩn cấp'), findsOneWidget);
+      expect(find.text('☎ Đã gửi yêu cầu gọi'), findsOneWidget);
+      expect(find.text('✅ Cuộc gọi đã được kết nối'), findsNothing);
       expect(find.text('Thời gian yêu cầu gọi'), findsOneWidget);
       expect(find.textContaining(event.emergencyCallSid!), findsNothing);
       expect(
@@ -79,4 +80,127 @@ void main() {
     );
     expect(find.textContaining('AUTH_ERROR'), findsNothing);
   });
+
+  final deliveryCases = <String, Map<String, dynamic>>{
+    '☎ Điện thoại đang đổ chuông': {
+      'emergency_call_ringing_at': '2026-09-28T01:19:18Z',
+    },
+    '✅ Cuộc gọi đã được kết nối': {
+      'emergency_call_ringing_at': '2026-09-28T01:19:18Z',
+      'emergency_call_answered_at': '2026-09-28T01:19:20Z',
+    },
+    '✅ Cuộc gọi đã hoàn tất': {'emergency_call_final_status': 'COMPLETED'},
+    '⚠️ Không có người trả lời': {'emergency_call_final_status': 'NO_ANSWER'},
+    '⚠️ Máy bận': {'emergency_call_final_status': 'BUSY'},
+    '⚠️ Cuộc gọi thất bại': {'emergency_call_final_status': 'FAILED'},
+    'Cuộc gọi đã bị hủy': {'emergency_call_final_status': 'CANCELED'},
+  };
+  for (final entry in deliveryCases.entries) {
+    testWidgets('delivery UI: ${entry.key}', (tester) async {
+      final json = _json(callStatus: 'ACCEPTED')..addAll(entry.value);
+      final event = FallEvent.fromJson(json);
+      final roundTrip = FallEvent.fromJson(event.toJson());
+      expect(roundTrip.emergencyCallDisplay, entry.key);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: EventDetailScreen(event: event, onBack: () {}),
+          ),
+        ),
+      );
+      expect(find.text(entry.key), findsOneWidget);
+      expect(find.text('☎ Đã thực hiện cuộc gọi khẩn cấp'), findsNothing);
+      expect(find.textContaining(event.emergencyCallSid!), findsNothing);
+    });
+  }
+
+  testWidgets(
+    'first failure has pending retry; second failure has no third retry',
+    (tester) async {
+      final json = _json(callStatus: 'ACCEPTED')
+        ..addAll({
+          'emergency_call_final_status': 'NO_ANSWER',
+          'emergency_call_retry_after': '2026-09-28T01:20:15Z',
+        });
+      Future<void> show() => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: EventDetailScreen(
+              event: FallEvent.fromJson(json),
+              onBack: () {},
+            ),
+          ),
+        ),
+      );
+      await show();
+      expect(find.text('Đang chuẩn bị gọi lại lần cuối'), findsOneWidget);
+      json['emergency_call_retry_count'] = 1;
+      json['emergency_call_retry_after'] = null;
+      json['emergency_call_last_sid'] = 'CA${'c' * 32}';
+      await show();
+      expect(find.text('Đang chuẩn bị gọi lại lần cuối'), findsNothing);
+      expect(find.text('Đã thử gọi lại 1 lần'), findsOneWidget);
+      expect(find.text('⚠️ Không có người trả lời'), findsOneWidget);
+      expect(
+        find.textContaining(json['emergency_call_last_sid']),
+        findsNothing,
+      );
+    },
+  );
+
+  for (final width in [390.0, 1280.0]) {
+    testWidgets('delivery detail stays responsive at width $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final json = _json(callStatus: 'ACCEPTED')
+        ..addAll({
+          'emergency_call_final_status': 'COMPLETED',
+          'emergency_call_initiated_at': '2026-09-28T01:19:17Z',
+          'emergency_call_ringing_at': '2026-09-28T01:19:18Z',
+          'emergency_call_answered_at': '2026-09-28T01:19:20Z',
+          'emergency_call_completed_at': '2026-09-28T01:19:45Z',
+          'emergency_call_retry_count': 1,
+        });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: EventDetailScreen(
+              event: FallEvent.fromJson(json),
+              onBack: () {},
+            ),
+          ),
+        ),
+      );
+      expect(find.text('✅ Cuộc gọi đã hoàn tất'), findsOneWidget);
+      expect(find.text('Kết nối lúc'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test(
+    'terminal state takes precedence over progress; requested is not accepted',
+    () {
+      final json = _json(callStatus: 'ACCEPTED')
+        ..addAll({
+          'emergency_call_final_status': 'COMPLETED',
+          'emergency_call_ringing_at': '2026-09-28T01:19:18Z',
+          'emergency_call_answered_at': '2026-09-28T01:19:20Z',
+          'emergency_call_retry_count': 1,
+        });
+      expect(
+        FallEvent.fromJson(json).emergencyCallDisplay,
+        '✅ Cuộc gọi đã hoàn tất',
+      );
+      json['emergency_call_status'] = 'REQUESTED';
+      expect(
+        FallEvent.fromJson(json).emergencyCallDisplay,
+        '☎ Đang gửi yêu cầu gọi',
+      );
+      expect(FallEvent.fromJson(_json()).emergencyCallRetryCount, 0);
+    },
+  );
 }

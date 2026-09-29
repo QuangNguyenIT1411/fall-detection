@@ -17,6 +17,7 @@ export interface VoiceConfig {
   to: string;
   voice: string;
   trialMode?: boolean;
+  callbackUrl?: string;
 }
 
 const SID = /^AC[0-9a-fA-F]{32}$/;
@@ -47,12 +48,16 @@ export function loadVoiceConfig(
     return disabled("configuration invalid");
   }
   const trialMode = trialModeValue === "true";
+  const projectUrl = env("SUPABASE_URL");
   if (!accountSid || !authToken || !from || !to) return disabled("configuration unavailable");
   if (!SID.test(accountSid) || !E164.test(from) || !E164.test(to) ||
       (!trialMode && !VOICE.test(voice))) {
     return disabled("configuration invalid");
   }
-  return { accountSid, authToken, from, to, voice, trialMode };
+  return { accountSid, authToken, from, to, voice, trialMode,
+    callbackUrl: projectUrl
+      ? `${projectUrl.replace(/\/$/, "")}/functions/v1/twilio-call-status`
+      : undefined };
 }
 
 const fallMessage = "Đây là cảnh báo từ FallGuard. " +
@@ -86,6 +91,16 @@ export async function sendTwilioCall(
       ? { Url: "https://webhooks.twilio.com/v1/Voice/Template/voice_text_to_speech" }
       : { Twiml: buildEmergencyTwiml(kind, config.voice) }),
   });
+  if (config.callbackUrl) {
+    body.set("StatusCallback", config.callbackUrl);
+    // Trial docs allow StatusCallback but do not list StatusCallbackEvent.
+    // Full accounts receive progress; Trial progress is reconciled via GET.
+    if (!config.trialMode) {
+      for (const event of ["initiated", "ringing", "answered", "completed"]) {
+        body.append("StatusCallbackEvent", event);
+      }
+    }
+  }
   let response: Response;
   try {
     response = await fetchImpl(
@@ -123,12 +138,34 @@ export async function sendTwilioCall(
   return { ok: false, error: "INVALID_RESPONSE", retryable: false };
 }
 
+// Read-only reconciliation: Trial allows terminal StatusCallback but does not
+// document StatusCallbackEvent. Never infer ringing/answering from API acceptance.
+export async function readTwilioCallStatus(
+  config: VoiceConfig, sid: string, fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+  if (!CALL_SID.test(sid)) return null;
+  try {
+    const response = await fetchImpl(
+      `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Calls/${sid}.json`,
+      { method: "GET", headers: {
+        authorization: `Basic ${btoa(`${config.accountSid}:${config.authToken}`)}`,
+      }, signal: AbortSignal.timeout(5000) },
+    );
+    if (!response.ok) return null;
+    const result = await response.json();
+    const allowed = ["queued", "initiated", "ringing", "in-progress",
+      "completed", "no-answer", "busy", "failed", "canceled"];
+    return result.sid === sid && result.account_sid === config.accountSid &&
+      allowed.includes(result.status) ? result.status : null;
+  } catch { return null; } // No provider response, headers or credentials logged.
+}
+
 export async function attemptEmergencyVoice(
   supabase: SupabaseClient,
   eventId: string,
   deviceId: string,
   kind: EmergencyKind,
-  options: { config?: VoiceConfig | null; fetchImpl?: typeof fetch } = {},
+  options: { config?: VoiceConfig | null; fetchImpl?: typeof fetch; retry?: boolean } = {},
 ): Promise<VoiceResult> {
   const config = options.config === undefined ? loadVoiceConfig() : options.config;
   if (!config) return { state: "disabled" };
@@ -138,7 +175,7 @@ export async function attemptEmergencyVoice(
     p_event_id: eventId, p_device_id: deviceId, p_claim_token: claimToken,
   };
   const { data: claimed, error: claimError } = await supabase.rpc(
-    "claim_emergency_call", claimArgs,
+    options.retry ? "claim_emergency_call_retry" : "claim_emergency_call", claimArgs,
   );
   if (claimError) {
     console.error("Emergency call claim failed");

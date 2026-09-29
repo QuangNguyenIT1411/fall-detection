@@ -247,22 +247,41 @@ class EventDetailScreen extends StatelessWidget {
                                                 .toLocal(),
                                           ),
                                     ),
-                                  if (currentEvent.emergencyCallStatus ==
-                                          EmergencyCallStatus.requested ||
-                                      currentEvent.emergencyCallStatus ==
-                                          EmergencyCallStatus.accepted)
+                                  if (currentEvent.emergencyCallDisplay != null)
                                     _DetailItem(
                                       width: itemWidth,
                                       label: 'Cuộc gọi khẩn cấp',
-                                      value: '☎ Đã thực hiện cuộc gọi khẩn cấp',
+                                      value: currentEvent.emergencyCallDisplay!,
                                     ),
-                                  if (currentEvent.emergencyCallStatus ==
-                                      EmergencyCallStatus.failed)
+                                  if (currentEvent.emergencyCallRetryPending ||
+                                      currentEvent.emergencyCallRetryCount == 1)
                                     _DetailItem(
                                       width: itemWidth,
-                                      label: 'Cuộc gọi khẩn cấp',
-                                      value: '⚠️ Không thể thực hiện cuộc gọi khẩn cấp',
+                                      label: 'Gọi lại',
+                                      value:
+                                          currentEvent.emergencyCallRetryPending
+                                          ? 'Đang chuẩn bị gọi lại lần cuối'
+                                          : 'Đã thử gọi lại 1 lần',
                                     ),
+                                  for (final deliveryTime
+                                      in <String, DateTime?>{
+                                        'Bắt đầu gọi lúc': currentEvent
+                                            .emergencyCallInitiatedAt,
+                                        'Đổ chuông lúc':
+                                            currentEvent.emergencyCallRingingAt,
+                                        'Kết nối lúc': currentEvent
+                                            .emergencyCallAnsweredAt,
+                                        'Kết thúc cuộc gọi lúc': currentEvent
+                                            .emergencyCallCompletedAt,
+                                      }.entries)
+                                    if (deliveryTime.value != null)
+                                      _DetailItem(
+                                        width: itemWidth,
+                                        label: deliveryTime.key,
+                                        value: DateFormat(
+                                          'dd/MM/yyyy HH:mm:ss',
+                                        ).format(deliveryTime.value!.toLocal()),
+                                      ),
                                   if (currentEvent.emergencyCallRequestedAt !=
                                       null)
                                     _DetailItem(

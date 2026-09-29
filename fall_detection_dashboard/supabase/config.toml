@@ -22,3 +22,9 @@ verify_jwt = false
 
 [functions.telegram-webhook]
 verify_jwt = false
+
+[functions.twilio-call-status]
+verify_jwt = false
+
+[functions.check-emergency-calls]
+verify_jwt = false

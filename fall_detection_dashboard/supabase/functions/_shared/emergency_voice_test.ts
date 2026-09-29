@@ -1,4 +1,4 @@
-import { attemptEmergencyVoice, buildEmergencyTwiml, loadVoiceConfig,
+import { attemptEmergencyVoice, buildEmergencyTwiml, loadVoiceConfig, readTwilioCallStatus,
   sendTwilioCall, type VoiceConfig } from "./emergency_voice.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.4";
 
@@ -10,6 +10,7 @@ const config: VoiceConfig = {
   from: "+15551234567",
   to: "+84912345678",
   voice: "Google.vi-VN-Standard-A",
+  callbackUrl: "https://example.supabase.co/functions/v1/twilio-call-status",
 };
 const callSid = `CA${"b".repeat(32)}`;
 function assert(condition: unknown, message: string): asserts condition {
@@ -112,6 +113,9 @@ Deno.test("Twilio REST request uses Basic Auth/form and accepts a Call SID", asy
     assert(body.get("To") === config.to && body.get("From") === config.from,
       "Wrong phone numbers");
     assert(body.get("Twiml")?.includes("<Say") === true, "Missing TwiML");
+    assert(body.get("StatusCallback") === config.callbackUrl, "Missing callback");
+    assert(body.getAll("StatusCallbackEvent").join(",") ===
+      "initiated,ringing,answered,completed", "Missing full-mode progress events");
     return Response.json({ sid: callSid }, { status: 201 });
   });
   assert(result.ok && result.sid === callSid, "Twilio acceptance failed");
@@ -119,11 +123,12 @@ Deno.test("Twilio REST request uses Basic Auth/form and accepts a Call SID", asy
     `${config.accountSid}:${config.authToken}`, "Wrong Basic Auth");
 });
 
-Deno.test("trial config uses only approved Url, To and From; 201 becomes ACCEPTED once", async () => {
+Deno.test("trial config uses approved Url, To, From, StatusCallback; accepted once", async () => {
   const values: Record<string, string> = {
     TWILIO_ACCOUNT_SID: config.accountSid, TWILIO_AUTH_TOKEN: config.authToken,
     TWILIO_FROM_NUMBER: config.from, CAREGIVER_PHONE_NUMBER: config.to,
     TWILIO_TRIAL_MODE: "true",
+    SUPABASE_URL: "https://example.supabase.co",
   };
   const trial = loadVoiceConfig((key) => values[key]);
   assert(trial?.trialMode === true, "Trial flag not loaded");
@@ -136,7 +141,8 @@ Deno.test("trial config uses only approved Url, To and From; 201 becomes ACCEPTE
     assert(!body.has("Twiml"), "Trial request sent inline TwiML");
     assert(body.get("To") === config.to && body.get("From") === config.from,
       "Trial changed phone parameters");
-    assert([...body.keys()].sort().join(",") === "From,To,Url", "Extra trial parameters");
+    assert(body.get("StatusCallback") === config.callbackUrl, "Trial callback missing");
+    assert([...body.keys()].sort().join(",") === "From,StatusCallback,To,Url", "Extra trial parameters");
     return Response.json({ sid: callSid }, { status: 201 });
   };
   const first = await attemptEmergencyVoice(db.client, eventId, deviceId,
@@ -145,6 +151,28 @@ Deno.test("trial config uses only approved Url, To and From; 201 becomes ACCEPTE
     "SOS", { config: trial, fetchImpl: trialFetch });
   assert(first.state === "accepted" && again.state === "already_accepted" &&
     db.fetches === 1, "Trial acceptance/idempotency failed");
+});
+
+Deno.test("read-only reconciliation checks SID/account, never places a call or logs payload", async () => {
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...values) => logs.push(values.join(" "));
+  try {
+    for (const status of ["queued", "ringing", "in-progress", "completed", "no-answer", "busy", "failed", "canceled"]) {
+      const result = await readTwilioCallStatus(config, callSid, async (url, init) => {
+        assert(init?.method === "GET" && String(url).endsWith(`${callSid}.json`), "Not a read-only GET");
+        return Response.json({ sid: callSid, account_sid: config.accountSid, status,
+          to: config.to, auth_token: config.authToken });
+      });
+      assert(result === status, "Authoritative status lost");
+    }
+    assert(await readTwilioCallStatus(config, callSid, async () =>
+      Response.json({ sid: "wrong", account_sid: config.accountSid, status: "completed" })) === null,
+      "Wrong call matched");
+    assert(await readTwilioCallStatus(config, callSid, async () => { throw new Error(config.authToken); }) === null,
+      "Provider failure leaked");
+    assert(logs.length === 0, "Read response logged");
+  } finally { console.error = original; }
 });
 
 Deno.test("explicit full mode retains distinct Vietnamese FALL/SOS Twiml without Url", async () => {
