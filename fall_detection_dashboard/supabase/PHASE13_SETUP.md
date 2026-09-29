@@ -24,6 +24,13 @@ Do not add these values to Git, firmware, Flutter, or Vercel environment.
    Optional: `EMERGENCY_VOICE_CALL_ENABLED=true` (set `false` to disable);
    `TWILIO_TTS_VOICE=Google.vi-VN-Standard-A` (default). A different voice
    must support Vietnamese (`vi-VN`). Keep all values only in Supabase secrets.
+   For a trial account, add **`TWILIO_TRIAL_MODE=true`** manually. This uses
+   Twilio's permitted `voice_text_to_speech` URL template, not inline TwiML.
+   The automatic call may play a trial announcement/generic template and
+   **must not be described as custom FallGuard Vietnamese speech**.
+   For a full account, set `TWILIO_TRIAL_MODE=false` (also the default when
+   absent) to retain the custom Vietnamese FALL/SOS messages. Invalid values
+   safely disable voice; neither mode changes Telegram or call claims.
 4. Create a **new** fall or manual SOS and inspect its `fall_events` row:
    `emergency_call_status` should become `ACCEPTED` with a Call SID if Twilio
    accepted the request. `ACCEPTED` does **not** mean the caregiver answered;
@@ -33,6 +40,8 @@ Do not add these values to Git, firmware, Flutter, or Vercel environment.
    Repeat the same request ID to confirm neither channel intentionally sends
    twice. Test an unavailable Twilio account only with controlled mock tests;
    avoid generating unwanted real emergency calls.
+   After switching modes, test with a **NEW** SOS. Leave previously failed
+   events unchanged; do not manually reset their call status or attempts.
 
 The backend makes at most two API attempts for a provider 5xx response.
 HTTP 4xx, timeout, and lost-response network errors are not automatically

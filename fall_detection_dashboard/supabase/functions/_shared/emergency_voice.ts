@@ -16,6 +16,7 @@ export interface VoiceConfig {
   from: string;
   to: string;
   voice: string;
+  trialMode?: boolean;
 }
 
 const SID = /^AC[0-9a-fA-F]{32}$/;
@@ -41,12 +42,17 @@ export function loadVoiceConfig(
   const from = env("TWILIO_FROM_NUMBER");
   const to = env("CAREGIVER_PHONE_NUMBER");
   const voice = env("TWILIO_TTS_VOICE") ?? "Google.vi-VN-Standard-A";
-  if (!accountSid || !authToken || !from || !to) return disabled("configuration unavailable");
-  if (!SID.test(accountSid) || !E164.test(from) || !E164.test(to) ||
-      !VOICE.test(voice)) {
+  const trialModeValue = env("TWILIO_TRIAL_MODE") ?? "false";
+  if (trialModeValue !== "true" && trialModeValue !== "false") {
     return disabled("configuration invalid");
   }
-  return { accountSid, authToken, from, to, voice };
+  const trialMode = trialModeValue === "true";
+  if (!accountSid || !authToken || !from || !to) return disabled("configuration unavailable");
+  if (!SID.test(accountSid) || !E164.test(from) || !E164.test(to) ||
+      (!trialMode && !VOICE.test(voice))) {
+    return disabled("configuration invalid");
+  }
+  return { accountSid, authToken, from, to, voice, trialMode };
 }
 
 const fallMessage = "Đây là cảnh báo từ FallGuard. " +
@@ -76,7 +82,9 @@ export async function sendTwilioCall(
   const body = new URLSearchParams({
     To: config.to,
     From: config.from,
-    Twiml: buildEmergencyTwiml(kind, config.voice),
+    ...(config.trialMode
+      ? { Url: "https://webhooks.twilio.com/v1/Voice/Template/voice_text_to_speech" }
+      : { Twiml: buildEmergencyTwiml(kind, config.voice) }),
   });
   let response: Response;
   try {

@@ -119,6 +119,60 @@ Deno.test("Twilio REST request uses Basic Auth/form and accepts a Call SID", asy
     `${config.accountSid}:${config.authToken}`, "Wrong Basic Auth");
 });
 
+Deno.test("trial config uses only approved Url, To and From; 201 becomes ACCEPTED once", async () => {
+  const values: Record<string, string> = {
+    TWILIO_ACCOUNT_SID: config.accountSid, TWILIO_AUTH_TOKEN: config.authToken,
+    TWILIO_FROM_NUMBER: config.from, CAREGIVER_PHONE_NUMBER: config.to,
+    TWILIO_TRIAL_MODE: "true",
+  };
+  const trial = loadVoiceConfig((key) => values[key]);
+  assert(trial?.trialMode === true, "Trial flag not loaded");
+  const db = new VoiceDb();
+  const trialFetch: typeof fetch = async (_url, init) => {
+    db.fetches++;
+    const body = new URLSearchParams(init?.body as URLSearchParams);
+    assert(body.get("Url") ===
+      "https://webhooks.twilio.com/v1/Voice/Template/voice_text_to_speech", "Wrong trial template");
+    assert(!body.has("Twiml"), "Trial request sent inline TwiML");
+    assert(body.get("To") === config.to && body.get("From") === config.from,
+      "Trial changed phone parameters");
+    assert([...body.keys()].sort().join(",") === "From,To,Url", "Extra trial parameters");
+    return Response.json({ sid: callSid }, { status: 201 });
+  };
+  const first = await attemptEmergencyVoice(db.client, eventId, deviceId,
+    "SOS", { config: trial, fetchImpl: trialFetch });
+  const again = await attemptEmergencyVoice(db.client, eventId, deviceId,
+    "SOS", { config: trial, fetchImpl: trialFetch });
+  assert(first.state === "accepted" && again.state === "already_accepted" &&
+    db.fetches === 1, "Trial acceptance/idempotency failed");
+});
+
+Deno.test("explicit full mode retains distinct Vietnamese FALL/SOS Twiml without Url", async () => {
+  const values: Record<string, string> = {
+    TWILIO_ACCOUNT_SID: config.accountSid, TWILIO_AUTH_TOKEN: config.authToken,
+    TWILIO_FROM_NUMBER: config.from, CAREGIVER_PHONE_NUMBER: config.to,
+    TWILIO_TRIAL_MODE: "false",
+  };
+  const full = loadVoiceConfig((key) => values[key]);
+  assert(full?.trialMode === false, "Full mode not loaded");
+  for (const kind of ["FALL", "SOS"] as const) {
+    await sendTwilioCall(kind, full, async (_url, init) => {
+      const body = new URLSearchParams(init?.body as URLSearchParams);
+      assert(!body.has("Url") && body.has("Twiml"), "Full mode sent trial template");
+      const xml = body.get("Twiml") ?? "";
+      assert(xml.includes('language="vi-VN"') && xml.includes(config.voice), "Vietnamese voice lost");
+      assert(xml.includes(kind === "SOS" ? "nhấn nút SOS" : "khả năng bị té ngã"),
+        "Wrong full-mode emergency message");
+      return Response.json({ sid: callSid }, { status: 201 });
+    });
+  }
+  values.TWILIO_TRIAL_MODE = "invalid";
+  assert(loadVoiceConfig((key) => values[key]) === null, "Invalid flag accepted");
+  values.TWILIO_TRIAL_MODE = "true";
+  values.CAREGIVER_PHONE_NUMBER = "invalid";
+  assert(loadVoiceConfig((key) => values[key]) === null, "Invalid trial config accepted");
+});
+
 Deno.test("CONFIRMED FALL and SOS each call once; repeat is idempotent", async () => {
   for (const kind of ["FALL", "SOS"] as const) {
     const db = new VoiceDb();
