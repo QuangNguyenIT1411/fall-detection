@@ -76,7 +76,10 @@ void main() {
     expect(find.text('🆘 YÊU CẦU TRỢ GIÚP KHẨN CẤP'), findsOneWidget);
     expect(find.text('Thời gian SOS'), findsOneWidget);
     expect(find.text('Đã gửi cảnh báo người thân lúc'), findsOneWidget);
-    expect(find.text('✅ Người thân đã nhận cảnh báo'), findsOneWidget);
+    expect(
+      find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+      findsOneWidget,
+    );
     expect(find.text('Telegram'), findsOneWidget);
     for (final label in [
       'Peak ACC',

@@ -253,6 +253,28 @@ class EventDetailScreen extends StatelessWidget {
                                       label: 'Cuộc gọi khẩn cấp',
                                       value: currentEvent.emergencyCallDisplay!,
                                     ),
+                                  if (currentEvent.emergencyCallDisplay != null)
+                                    const SizedBox(
+                                      width: double.infinity,
+                                      child: Text(
+                                        'Trạng thái cuộc gọi do nhà cung cấp viễn thông báo về và không đảm bảo điện thoại vật lý đã đổ chuông hoặc người nhận đã nghe máy.',
+                                        style: TextStyle(
+                                          color: AppColors.muted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  if (currentEvent.emergencyCallFinalStatus ==
+                                      EmergencyCallFinalStatus.completed)
+                                    const SizedBox(
+                                      width: double.infinity,
+                                      child: Text(
+                                        'Chưa xác minh người thân thực sự nghe máy.',
+                                        style: TextStyle(
+                                          color: AppColors.muted,
+                                        ),
+                                      ),
+                                    ),
                                   if (currentEvent.emergencyCallRetryPending ||
                                       currentEvent.emergencyCallRetryCount == 1)
                                     _DetailItem(
@@ -267,9 +289,9 @@ class EventDetailScreen extends StatelessWidget {
                                       in <String, DateTime?>{
                                         'Bắt đầu gọi lúc': currentEvent
                                             .emergencyCallInitiatedAt,
-                                        'Đổ chuông lúc':
+                                        'Nhà mạng báo đổ chuông lúc':
                                             currentEvent.emergencyCallRingingAt,
-                                        'Kết nối lúc': currentEvent
+                                        'Twilio báo kết nối lúc': currentEvent
                                             .emergencyCallAnsweredAt,
                                         'Kết thúc cuộc gọi lúc': currentEvent
                                             .emergencyCallCompletedAt,
@@ -301,7 +323,7 @@ class EventDetailScreen extends StatelessWidget {
                                       label: 'Người thân xác nhận',
                                       value: currentEvent.acknowledgedAt == null
                                           ? 'Người thân chưa xác nhận đã nhận cảnh báo'
-                                          : '✅ Người thân đã nhận cảnh báo',
+                                          : '✅ Người thân đã xác nhận đã nhận cảnh báo',
                                     ),
                                   if (currentEvent.acknowledgedAt != null)
                                     _DetailItem(

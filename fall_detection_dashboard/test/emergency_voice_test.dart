@@ -46,7 +46,11 @@ void main() {
         ),
       );
       expect(find.text('☎ Đã gửi yêu cầu gọi'), findsOneWidget);
-      expect(find.text('✅ Cuộc gọi đã được kết nối'), findsNothing);
+      expect(find.text('☎ Twilio báo cuộc gọi đã được kết nối'), findsNothing);
+      expect(
+        find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+        findsNothing,
+      );
       expect(find.text('Thời gian yêu cầu gọi'), findsOneWidget);
       expect(find.textContaining(event.emergencyCallSid!), findsNothing);
       expect(
@@ -62,6 +66,24 @@ void main() {
       }
     });
   }
+
+  testWidgets('REQUESTED has the same submitted label as ACCEPTED', (
+    tester,
+  ) async {
+    final event = FallEvent.fromJson(_json(callStatus: 'REQUESTED'));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EventDetailScreen(event: event, onBack: () {}),
+        ),
+      ),
+    );
+    expect(find.text('☎ Đã gửi yêu cầu gọi'), findsOneWidget);
+    expect(
+      find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+      findsNothing,
+    );
+  });
 
   testWidgets('failed call shows safe message, never provider error', (
     tester,
@@ -82,14 +104,14 @@ void main() {
   });
 
   final deliveryCases = <String, Map<String, dynamic>>{
-    '☎ Điện thoại đang đổ chuông': {
+    '☎ Nhà mạng báo đang đổ chuông': {
       'emergency_call_ringing_at': '2026-09-28T01:19:18Z',
     },
-    '✅ Cuộc gọi đã được kết nối': {
+    '☎ Twilio báo cuộc gọi đã được kết nối': {
       'emergency_call_ringing_at': '2026-09-28T01:19:18Z',
       'emergency_call_answered_at': '2026-09-28T01:19:20Z',
     },
-    '✅ Cuộc gọi đã hoàn tất': {'emergency_call_final_status': 'COMPLETED'},
+    '☑ Phiên gọi đã kết thúc': {'emergency_call_final_status': 'COMPLETED'},
     '⚠️ Không có người trả lời': {'emergency_call_final_status': 'NO_ANSWER'},
     '⚠️ Máy bận': {'emergency_call_final_status': 'BUSY'},
     '⚠️ Cuộc gọi thất bại': {'emergency_call_final_status': 'FAILED'},
@@ -111,8 +133,57 @@ void main() {
       expect(find.text(entry.key), findsOneWidget);
       expect(find.text('☎ Đã thực hiện cuộc gọi khẩn cấp'), findsNothing);
       expect(find.textContaining(event.emergencyCallSid!), findsNothing);
+      expect(
+        find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+        findsNothing,
+      );
+      expect(
+        find.text('Người thân chưa xác nhận đã nhận cảnh báo'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Trạng thái cuộc gọi do nhà cung cấp viễn thông báo về và không đảm bảo điện thoại vật lý đã đổ chuông hoặc người nhận đã nghe máy.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Chưa xác minh người thân thực sự nghe máy.'),
+        entry.key == '☑ Phiên gọi đã kết thúc' ? findsOneWidget : findsNothing,
+      );
     });
   }
+
+  testWidgets('COMPLETED plus Telegram ACK shows separate confirmation', (
+    tester,
+  ) async {
+    final json = _json(callStatus: 'ACCEPTED')
+      ..addAll({
+        'emergency_call_final_status': 'COMPLETED',
+        'acknowledged_at': '2026-09-28T01:20:00Z',
+        'acknowledged_via': 'TELEGRAM',
+      });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EventDetailScreen(
+            event: FallEvent.fromJson(json),
+            onBack: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('☑ Phiên gọi đã kết thúc'), findsOneWidget);
+    expect(
+      find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Chưa xác minh người thân thực sự nghe máy.'),
+      findsOneWidget,
+    );
+    expect(find.text('Telegram'), findsOneWidget);
+  });
 
   testWidgets(
     'first failure has pending retry; second failure has no third retry',
@@ -175,8 +246,9 @@ void main() {
           ),
         ),
       );
-      expect(find.text('✅ Cuộc gọi đã hoàn tất'), findsOneWidget);
-      expect(find.text('Kết nối lúc'), findsOneWidget);
+      expect(find.text('☑ Phiên gọi đã kết thúc'), findsOneWidget);
+      expect(find.text('Twilio báo kết nối lúc'), findsOneWidget);
+      expect(find.text('Nhà mạng báo đổ chuông lúc'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
@@ -193,12 +265,12 @@ void main() {
         });
       expect(
         FallEvent.fromJson(json).emergencyCallDisplay,
-        '✅ Cuộc gọi đã hoàn tất',
+        '☑ Phiên gọi đã kết thúc',
       );
       json['emergency_call_status'] = 'REQUESTED';
       expect(
         FallEvent.fromJson(json).emergencyCallDisplay,
-        '☎ Đang gửi yêu cầu gọi',
+        '☎ Đã gửi yêu cầu gọi',
       );
       expect(FallEvent.fromJson(_json()).emergencyCallRetryCount, 0);
     },

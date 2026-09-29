@@ -226,13 +226,13 @@ class FallEvent {
   // Final delivery wins over old progress timestamps for the current attempt.
   String? get emergencyCallDisplay {
     if (emergencyCallStatus == EmergencyCallStatus.requested) {
-      return '☎ Đang gửi yêu cầu gọi';
+      return '☎ Đã gửi yêu cầu gọi';
     }
     if (emergencyCallStatus == EmergencyCallStatus.failed) {
       return '⚠️ Không thể thực hiện cuộc gọi khẩn cấp';
     }
     final finalMessage = switch (emergencyCallFinalStatus) {
-      EmergencyCallFinalStatus.completed => '✅ Cuộc gọi đã hoàn tất',
+      EmergencyCallFinalStatus.completed => '☑ Phiên gọi đã kết thúc',
       EmergencyCallFinalStatus.noAnswer => '⚠️ Không có người trả lời',
       EmergencyCallFinalStatus.busy => '⚠️ Máy bận',
       EmergencyCallFinalStatus.failed => '⚠️ Cuộc gọi thất bại',
@@ -240,8 +240,12 @@ class FallEvent {
       null => null,
     };
     if (finalMessage != null) return finalMessage;
-    if (emergencyCallAnsweredAt != null) return '✅ Cuộc gọi đã được kết nối';
-    if (emergencyCallRingingAt != null) return '☎ Điện thoại đang đổ chuông';
+    if (emergencyCallAnsweredAt != null) {
+      return '☎ Twilio báo cuộc gọi đã được kết nối';
+    }
+    if (emergencyCallRingingAt != null) {
+      return '☎ Nhà mạng báo đang đổ chuông';
+    }
     return emergencyCallStatus == EmergencyCallStatus.accepted
         ? '☎ Đã gửi yêu cầu gọi'
         : null;

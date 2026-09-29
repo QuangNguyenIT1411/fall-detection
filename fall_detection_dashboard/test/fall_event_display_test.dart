@@ -124,7 +124,10 @@ void main() {
         ),
       ),
     );
-    expect(find.text('✅ Người thân đã nhận cảnh báo'), findsOneWidget);
+    expect(
+      find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+      findsOneWidget,
+    );
     expect(
       find.text(
         DateFormat('dd/MM/yyyy HH:mm:ss')

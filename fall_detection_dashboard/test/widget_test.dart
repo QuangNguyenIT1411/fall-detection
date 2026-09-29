@@ -80,7 +80,10 @@ void main() {
     repository.acknowledged = true;
     await tester.tap(find.byKey(const Key('refresh-event-button')));
     await tester.pumpAndSettle();
-    expect(find.text('✅ Người thân đã nhận cảnh báo'), findsOneWidget);
+    expect(
+      find.text('✅ Người thân đã xác nhận đã nhận cảnh báo'),
+      findsOneWidget,
+    );
     expect(find.widgetWithText(FilledButton, 'Đã nhận cảnh báo'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
