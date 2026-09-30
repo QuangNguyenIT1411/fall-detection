@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -110,6 +111,87 @@ class RealtimeScreen extends StatelessWidget {
                       ],
                     );
                   },
+                ),
+                const SizedBox(height: 20),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Nhật ký trạng thái gần đây',
+                                style: TextStyle(
+                                  color: AppColors.navy,
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              key: const Key('clear-recent-states'),
+                              onPressed: provider.recentStates.isEmpty
+                                  ? null
+                                  : provider.clearRecentStates,
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Xóa nhật ký'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Giúp kiểm tra các trạng thái trung gian khi thiết bị hoạt động bằng pin và không kết nối Serial Monitor.',
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Trạng thái trung gian không đồng nghĩa đã tạo sự kiện té ngã.',
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 16),
+                        if (provider.recentStates.isEmpty)
+                          const Text(
+                            'Chưa nhận được trạng thái nào từ thiết bị.',
+                          )
+                        else
+                          SizedBox(
+                            height: (provider.recentStates.length * 52.0).clamp(
+                              52.0,
+                              312.0,
+                            ),
+                            child: ListView.builder(
+                              key: const Key('recent-state-list'),
+                              itemCount: provider.recentStates.length,
+                              itemBuilder: (context, index) {
+                                final entry = provider.recentStates[index];
+                                return SizedBox(
+                                  height: 52,
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 90,
+                                        child: Text(
+                                          DateFormat(
+                                            'HH:mm:ss',
+                                          ).format(entry.receivedAt.toLocal()),
+                                          style: const TextStyle(
+                                            color: AppColors.muted,
+                                          ),
+                                        ),
+                                      ),
+                                      StateBadge(state: entry.state),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

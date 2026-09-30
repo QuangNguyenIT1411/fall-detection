@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/device.dart';
 import '../models/fall_event.dart';
 import '../models/realtime_update.dart';
+import '../models/recent_state_entry.dart';
 import '../models/telemetry.dart';
 import '../services/fall_event_repository.dart';
 import '../services/telemetry_data_source.dart';
@@ -39,6 +40,7 @@ class TelemetryProvider extends ChangeNotifier {
        _now = now ?? DateTime.now;
 
   static const maxPoints = 60;
+  static const maxRecentStates = 50;
   static const deviceWatchdogCheckInterval = Duration(seconds: 1);
   final TelemetryDataSource _dataSource;
   final FallEventRepository? _officialEventRepository;
@@ -62,6 +64,8 @@ class TelemetryProvider extends ChangeNotifier {
   String? _connectionMessage;
   bool _hasTelemetry = false;
   final List<Telemetry> _history = [];
+  final List<RecentStateEntry> _recentStates = [];
+  FallState? _lastReceivedState;
   final List<FallEvent> _events = [];
   bool _alertVisible = false;
   bool _disposed = false;
@@ -70,6 +74,7 @@ class TelemetryProvider extends ChangeNotifier {
 
   Telemetry get current => _current;
   List<Telemetry> get history => List.unmodifiable(_history);
+  List<RecentStateEntry> get recentStates => List.unmodifiable(_recentStates);
   List<FallEvent> get events => List.unmodifiable(_events);
   bool get alertVisible => _alertVisible;
   bool get isSimulating => _dataSource.isSimulating;
@@ -130,15 +135,32 @@ class TelemetryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearRecentStates() {
+    if (_recentStates.isEmpty) return;
+    _recentStates.clear();
+    // Keep the last observed state so the next repeated telemetry message does
+    // not look like a new transition after the user clears the timeline.
+    notifyListeners();
+  }
+
+  void _recordState(FallState state) {
+    if (_lastReceivedState == state) return;
+    _lastReceivedState = state;
+    _recentStates.insert(0, RecentStateEntry(state: state, receivedAt: _now()));
+    if (_recentStates.length > maxRecentStates) _recentStates.removeLast();
+  }
+
   void _onUpdate(RealtimeUpdate update) {
     switch (update) {
       case TelemetryUpdate(:final telemetry):
         if (telemetry.deviceId != _dataSource.deviceCode) break;
         _markDeviceMessageReceived();
+        _recordState(telemetry.state);
         _onTelemetry(telemetry);
       case FallStateUpdate(:final deviceId, :final state, :final timestamp):
         if (deviceId == _dataSource.deviceCode) {
           _markDeviceMessageReceived();
+          _recordState(state);
         }
         _onState(deviceId, state, timestamp);
       case DeviceStatusUpdate(:final deviceId, :final presence):
